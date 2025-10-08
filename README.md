@@ -1,58 +1,61 @@
 # SeaLines: Archipelago RTS
 
-SeaLines is a naval-focused real-time strategy prototype emphasizing logistics, scouting, and positional control across a dynamic chain of islands. This repository currently contains design documentation and development plans for building the playable experience and its supporting infrastructure.
+SeaLines is a naval-focused real-time strategy prototype about logistics, scouting, and positional control across a dynamic chain of islands. The repository contains both the interactive skirmish sandbox and an authoritative simulation server alongside the planning documentation.
 
 ## Repository Layout
 
-- `apps/client` – Vite + PixiJS prototype of the playable skirmish sandbox.
-- `apps/server` – Node.js authoritative simulation service with WebSocket broadcast loop.
-- `packages/shared` – shared TypeScript types, data tables, and pathfinding utilities.
-- `docs/` – high level planning documents outlining gameplay systems, technical architecture, milestones, and acceptance criteria.
-- `.github/workflows/` – continuous integration pipelines that keep the project buildable and testable from GitHub.
+- `apps/client` – browser-based skirmish sandbox rendered with the Canvas API.
+- `apps/server` – authoritative Node.js simulation service exposing a lightweight WebSocket endpoint.
+- `packages/shared` – shared data tables and utilities (unit stats, map generation, pathfinding, ID helpers).
+- `docs/` – design and production documentation, including milestone plans and acceptance criteria.
+- `scripts/` – development helpers (local static file server for the client).
+- `.github/workflows/` – continuous integration workflow running installs and tests on every push/PR.
 
-## Getting Started
+## Prerequisites
 
-SeaLines is developed as an npm workspace. A recent Node.js LTS release (>=20) is required.
+SeaLines now runs without any third-party dependencies. Ensure you have Node.js 20 or newer installed.
 
-```bash
-npm install
-```
+## Development Workflow
 
-### Running the client sandbox
-
-```bash
-npm run dev
-```
-
-This command launches the Vite development server on port 5173. The playable slice showcases the map renderer, camera controls (middle mouse drag / scroll wheel zoom), unit selection (left-click or marquee), right-click movement, patrol automation (press **P** or the HUD button for a two-point patrol), and escort behaviour.
-
-### Running the authoritative server
+### Launch the client sandbox
 
 ```bash
-npm run dev --workspace @seelines/server
+npm run dev:client
 ```
 
-The server boots on `ws://localhost:7070`, simulates the same spawn configuration as the client sandbox, accepts command messages, and broadcasts simulation snapshots at 30 Hz.
+This starts a static file server on http://localhost:5173 that serves the Canvas-based sandbox. Controls mirror the RTS loop:
 
-### Building and testing
+- **Camera** – middle-mouse drag to pan, scroll to zoom.
+- **Selection** – left-click or drag to marquee units.
+- **Orders** – right-click issues move/patrol/escort orders depending on the HUD mode (or press `M`, `P`, `E`). Patrol orders require two clicks: origin then destination. Escorts pick the nearest friendly ship to guard.
+
+### Run the authoritative server
 
 ```bash
-npm run build   # builds every workspace
-npm run lint    # TypeScript type-checking across workspaces
-npm test        # executes Vitest suites in shared + server packages
+npm run dev:server
 ```
+
+The server listens on `ws://localhost:7070`, advances the shared simulation at 30Hz, and broadcasts world snapshots to every connected client. Messages follow the JSON command/snapshot envelope documented in `apps/server/index.mjs`.
+
+### Tests
+
+```bash
+npm test
+```
+
+The test suite uses Node's built-in runner to validate pathfinding behaviour and simulation order resolution. No external packages are required.
 
 ## Continuous Integration
 
-GitHub Actions installs dependencies and runs the workspace `lint` and `test` scripts automatically. As additional packages (UI, gameplay systems, tooling) are introduced, CI will validate them without further configuration changes.
+GitHub Actions installs dependencies (none by default) and executes `npm test`. As the project evolves, keep scripts self-contained so the pipeline remains deterministic without network access.
 
 ## Contributing
 
-1. Follow the milestone roadmap in `docs/game_plan.md`.
-2. Use feature branches and submit pull requests with clear summaries and test results.
-3. Keep gameplay content data-driven (JSON/TS) to simplify balancing and iteration.
-4. Update documentation as systems and pipelines evolve.
+1. Review the milestone roadmap in `docs/game_plan.md` before tackling a feature.
+2. Build features in focused branches, including updated docs and tests when appropriate.
+3. Keep gameplay data table-driven to simplify balancing and iteration.
+4. Maintain a working `npm test` baseline so CI stays green.
 
 ## License
 
-The game is currently in pre-production; a license will be defined alongside the first playable build.
+The project is currently in pre-production; licensing will be formalised alongside the first public playtest build.

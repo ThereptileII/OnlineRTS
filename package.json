@@ -1,16 +1,6 @@
 {
   "name": "seelines",
   "private": true,
-  "version": "0.1.0",
-  "type": "module",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
-  "scripts": {
-    "build": "npm run build --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
-    "dev": "npm run dev --workspace @seelines/client"
+
   }
 }
