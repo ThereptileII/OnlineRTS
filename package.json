@@ -1,12 +1,6 @@
 {
   "name": "seelines",
   "private": true,
-  "version": "0.2.0",
-  "type": "module",
-  "scripts": {
-    "dev:client": "node scripts/dev-client.mjs",
-    "dev:server": "node apps/server/index.mjs",
-    "test": "node --test",
-    "check": "npm run test"
+
   }
 }

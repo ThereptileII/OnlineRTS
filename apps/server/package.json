@@ -1,0 +1,23 @@
+{
+  "name": "@seelines/server",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/index.js",
+    "dev": "ts-node-dev --respawn src/index.ts",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "nanoid": "^5.0.7",
+    "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "@seelines/shared": "file:../../packages/shared",
+    "@types/node": "^20.12.7",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.4.5",
+    "vitest": "^1.5.2"
+  }
+}
