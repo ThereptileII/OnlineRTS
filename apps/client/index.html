@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SeaLines Prototype</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #02121f;
+        color: #f4f7fb;
+        font-family: "Inter", system-ui, sans-serif;
+        height: 100%;
+        overflow: hidden;
+      }
+
+      #ui-root {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        pointer-events: none;
+      }
+
+      .hud {
+        display: flex;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
+        align-items: center;
+        pointer-events: auto;
+      }
+
+      .hud button {
+        background: rgba(22, 84, 133, 0.85);
+        color: #f3fbff;
+        border: 1px solid rgba(139, 197, 237, 0.3);
+        border-radius: 6px;
+        padding: 0.4rem 0.9rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        cursor: pointer;
+      }
+
+      .hud button.active {
+        background: rgba(64, 192, 255, 0.8);
+        color: #002133;
+        font-weight: 600;
+      }
+
+      .hud button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .status-panel {
+        margin-left: auto;
+        font-size: 0.85rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="ui-root">
+      <div class="hud">
+        <button id="order-move" class="active">Move</button>
+        <button id="order-patrol">Patrol</button>
+        <button id="order-escort">Escort</button>
+        <div class="status-panel">
+          <span id="status-mode">Mode: Move</span>
+          <span id="status-selection">No units selected</span>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

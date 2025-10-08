@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": "./src",
+    "outDir": "dist",
+    "paths": {
+      "@seelines/shared": ["../../packages/shared/src"]
+    }
+  },
+  "include": ["src/**/*", "vitest.config.ts"]
+}
