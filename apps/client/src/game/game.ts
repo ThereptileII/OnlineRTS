@@ -121,21 +121,38 @@ export class Game {
   }
 
   async start(): Promise<void> {
-    this.app = new Application();
-    await this.app.init({
+    const options = {
       backgroundColor: 0x02121f,
       resolution: window.devicePixelRatio || 1,
       autoDensity: true,
       resizeTo: window
-    });
+    } as const;
+
+    let app = new Application();
+    const maybeInit = (app as unknown as { init?: (opts: typeof options) => Promise<void> }).init;
+
+    if (typeof maybeInit === "function") {
+      await maybeInit.call(app, options);
+    } else {
+      app.destroy?.();
+      app = new Application(options as ConstructorParameters<typeof Application>[0]);
+    }
+
+    this.app = app;
+    const canvas = this.getCanvas();
+
+    if (!canvas) {
+      throw new Error("Unable to determine PixiJS view canvas");
+    }
+
     this.world.addChild(this.renderer.container);
     this.world.addChild(this.selectionBox);
     this.app.stage.addChild(this.world);
     this.camera = new CameraController({
-      view: this.app.canvas,
+      view: canvas,
       world: this.world
     });
-    this.container.appendChild(this.app.canvas);
+    this.container.appendChild(canvas);
     this.attachPointerHandlers();
     this.app.ticker.add(this.update);
     this.render();
@@ -324,7 +341,8 @@ export class Game {
 
   private attachPointerHandlers(): void {
     if (!this.app || !this.camera) return;
-    const view = this.app.canvas;
+    const view = this.getCanvas();
+    if (!view) return;
     view.addEventListener("contextmenu", (event: MouseEvent) => event.preventDefault());
     view.addEventListener("pointerdown", (event: PointerEvent) => {
       if (event.button !== 0) return;
@@ -354,6 +372,15 @@ export class Game {
       this.pointerDown = undefined;
       this.selectionBox.clear();
     });
+  }
+
+  private getCanvas(): HTMLCanvasElement | undefined {
+    if (!this.app) return undefined;
+    const { canvas, view } = this.app as unknown as {
+      canvas?: HTMLCanvasElement;
+      view?: HTMLCanvasElement;
+    };
+    return canvas ?? view;
   }
 
   private drawSelectionBox(start: Vector2, end: Vector2): void {
