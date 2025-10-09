@@ -39,15 +39,18 @@ The server listens on `ws://localhost:7070`, advances the shared simulation at 3
 
 ### Play without installing dependencies
 
-If you want to hand the prototype to someone who cannot install Node.js tooling, ship the pre-built offline bundle in `offline/client`. Opening `index.html` in any modern browser will launch the sandbox entirely from the local filesystem.
+You can produce an entirely self-contained offline build that runs straight from the filesystem—no package manager, local server, or additional libraries required.
 
-To regenerate this bundle after making source changes, run:
+1. Run the offline build script from the repository root:
 
-```bash
-npm run build:offline
-```
+   ```bash
+   npm run build:offline
+   ```
 
-The command rebuilds the client with Vite and refreshes the files under `offline/client`.
+   This script compiles the Vite client and copies the output to `offline/client`.
+2. Send the contents of `offline/client` to whoever wants to play offline (or double-click `offline/client/index.html` yourself). The game boots in any modern browser by simply opening that HTML file.
+
+> 💡 Prefer not to build locally? Trigger the **“Offline Client Build”** GitHub Action (either on pushes to `main` or manually via the Actions tab). It uploads the ready-to-run bundle as an artifact named `offline-client` that you can download and unzip.
 
 ### Tests
 
@@ -59,7 +62,12 @@ The test suite uses Node's built-in runner to validate pathfinding behaviour and
 
 ## Continuous Integration
 
-GitHub Actions installs dependencies (none by default) and executes `npm test`. As the project evolves, keep scripts self-contained so the pipeline remains deterministic without network access.
+GitHub Actions now runs two pipelines:
+
+- **CI** – installs dependencies (none by default) and executes `npm test` to keep the codebase healthy.
+- **Offline Client Build** – packages the static bundle described above and publishes it as a downloadable artifact so playtesters can run the game without setting up tooling.
+
+As the project evolves, keep scripts self-contained so the pipelines remain deterministic without network access.
 
 ## Contributing
 
