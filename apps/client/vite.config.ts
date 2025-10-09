@@ -3,7 +3,9 @@ import { fileURLToPath, URL } from "node:url";
 
 export default defineConfig({
   root: "./",
+  base: "./",
   resolve: {
+    extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".json"],
     alias: {
       "@seelines/shared": fileURLToPath(new URL("../../packages/shared/src", import.meta.url))
     }

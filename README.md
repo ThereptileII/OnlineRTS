@@ -37,6 +37,18 @@ npm run dev:server
 
 The server listens on `ws://localhost:7070`, advances the shared simulation at 30Hz, and broadcasts world snapshots to every connected client. Messages follow the JSON command/snapshot envelope documented in `apps/server/index.mjs`.
 
+### Play without installing dependencies
+
+If you want to hand the prototype to someone who cannot install Node.js tooling, ship the pre-built offline bundle in `offline/client`. Opening `index.html` in any modern browser will launch the sandbox entirely from the local filesystem.
+
+To regenerate this bundle after making source changes, run:
+
+```bash
+npm run build:offline
+```
+
+The command rebuilds the client with Vite and refreshes the files under `offline/client`.
+
 ### Tests
 
 ```bash
