@@ -29,6 +29,10 @@ export interface UnitDefinition {
   visionRange: number;
   hitpoints: number;
   acceleration: number;
+  supplyCost: number;
+  buildTime: number;
+  buildCost: number;
+  productionTier: 1 | 2 | 3;
 }
 
 export interface OrderTargetPoint {
@@ -92,7 +96,11 @@ export const UNIT_DEFINITIONS: Record<UnitType, UnitDefinition> = {
     maxSpeed: 4.5,
     visionRange: 7,
     hitpoints: 60,
-    acceleration: 18
+    acceleration: 18,
+    supplyCost: 2,
+    buildTime: 10,
+    buildCost: 120,
+    productionTier: 1
   },
   corvette: {
     type: "corvette",
@@ -101,7 +109,11 @@ export const UNIT_DEFINITIONS: Record<UnitType, UnitDefinition> = {
     maxSpeed: 3.5,
     visionRange: 6,
     hitpoints: 120,
-    acceleration: 12
+    acceleration: 12,
+    supplyCost: 3,
+    buildTime: 14,
+    buildCost: 220,
+    productionTier: 1
   },
   transport: {
     type: "transport",
@@ -110,7 +122,11 @@ export const UNIT_DEFINITIONS: Record<UnitType, UnitDefinition> = {
     maxSpeed: 2.75,
     visionRange: 5,
     hitpoints: 80,
-    acceleration: 10
+    acceleration: 10,
+    supplyCost: 2,
+    buildTime: 12,
+    buildCost: 180,
+    productionTier: 1
   },
   frigate: {
     type: "frigate",
@@ -119,7 +135,11 @@ export const UNIT_DEFINITIONS: Record<UnitType, UnitDefinition> = {
     maxSpeed: 3.1,
     visionRange: 6.5,
     hitpoints: 180,
-    acceleration: 11
+    acceleration: 11,
+    supplyCost: 4,
+    buildTime: 18,
+    buildCost: 320,
+    productionTier: 2
   },
   submarine: {
     type: "submarine",
@@ -128,7 +148,11 @@ export const UNIT_DEFINITIONS: Record<UnitType, UnitDefinition> = {
     maxSpeed: 2.4,
     visionRange: 5.5,
     hitpoints: 140,
-    acceleration: 8
+    acceleration: 8,
+    supplyCost: 4,
+    buildTime: 20,
+    buildCost: 360,
+    productionTier: 2
   },
   artilleryBarge: {
     type: "artilleryBarge",
@@ -137,7 +161,11 @@ export const UNIT_DEFINITIONS: Record<UnitType, UnitDefinition> = {
     maxSpeed: 1.8,
     visionRange: 5,
     hitpoints: 170,
-    acceleration: 6
+    acceleration: 6,
+    supplyCost: 5,
+    buildTime: 22,
+    buildCost: 410,
+    productionTier: 2
   },
   destroyer: {
     type: "destroyer",
@@ -146,7 +174,11 @@ export const UNIT_DEFINITIONS: Record<UnitType, UnitDefinition> = {
     maxSpeed: 3.4,
     visionRange: 6.8,
     hitpoints: 260,
-    acceleration: 10
+    acceleration: 10,
+    supplyCost: 5,
+    buildTime: 24,
+    buildCost: 480,
+    productionTier: 3
   },
   cruiser: {
     type: "cruiser",
@@ -155,7 +187,11 @@ export const UNIT_DEFINITIONS: Record<UnitType, UnitDefinition> = {
     maxSpeed: 2.9,
     visionRange: 7.4,
     hitpoints: 420,
-    acceleration: 7
+    acceleration: 7,
+    supplyCost: 6,
+    buildTime: 28,
+    buildCost: 620,
+    productionTier: 3
   },
   escortCarrier: {
     type: "escortCarrier",
@@ -164,7 +200,11 @@ export const UNIT_DEFINITIONS: Record<UnitType, UnitDefinition> = {
     maxSpeed: 2.6,
     visionRange: 7.8,
     hitpoints: 360,
-    acceleration: 6
+    acceleration: 6,
+    supplyCost: 7,
+    buildTime: 32,
+    buildCost: 700,
+    productionTier: 3
   },
   marineDetachment: {
     type: "marineDetachment",
@@ -173,7 +213,11 @@ export const UNIT_DEFINITIONS: Record<UnitType, UnitDefinition> = {
     maxSpeed: 2.1,
     visionRange: 4.5,
     hitpoints: 65,
-    acceleration: 8
+    acceleration: 8,
+    supplyCost: 1,
+    buildTime: 10,
+    buildCost: 140,
+    productionTier: 2
   },
   decoyFloat: {
     type: "decoyFloat",
@@ -182,7 +226,11 @@ export const UNIT_DEFINITIONS: Record<UnitType, UnitDefinition> = {
     maxSpeed: 3.2,
     visionRange: 0,
     hitpoints: 20,
-    acceleration: 14
+    acceleration: 14,
+    supplyCost: 1,
+    buildTime: 6,
+    buildCost: 80,
+    productionTier: 1
   }
 };
 
@@ -211,6 +259,10 @@ export interface BuildingDefinition {
   pressureBonus: number;
   powerOutput: number;
   description: string;
+  buildCost: number;
+  buildTime: number;
+  creditYield: number;
+  maxTier: 1 | 2 | 3;
 }
 
 export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
@@ -223,7 +275,11 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     supplyCapacity: 28,
     pressureBonus: 8,
     powerOutput: 4,
-    description: "Primary command harbor providing staging and logistics throughput."
+    description: "Primary command harbor providing staging and logistics throughput.",
+    buildCost: 0,
+    buildTime: 0,
+    creditYield: 2,
+    maxTier: 1
   },
   warehouse: {
     type: "warehouse",
@@ -234,7 +290,11 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     supplyCapacity: 18,
     pressureBonus: 12,
     powerOutput: 0,
-    description: "Storage and distribution hub that boosts supply pressure via adjacency."
+    description: "Storage and distribution hub that boosts supply pressure via adjacency.",
+    buildCost: 220,
+    buildTime: 20,
+    creditYield: 0,
+    maxTier: 3
   },
   powerWind: {
     type: "powerWind",
@@ -245,7 +305,11 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     supplyCapacity: 4,
     pressureBonus: 3,
     powerOutput: 12,
-    description: "Reliable wind generation that thrives in rough weather."
+    description: "Reliable wind generation that thrives in rough weather.",
+    buildCost: 160,
+    buildTime: 16,
+    creditYield: 0,
+    maxTier: 2
   },
   powerSolar: {
     type: "powerSolar",
@@ -256,7 +320,11 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     supplyCapacity: 3,
     pressureBonus: 2,
     powerOutput: 10,
-    description: "Calm-day energy option with minimal upkeep."
+    description: "Calm-day energy option with minimal upkeep.",
+    buildCost: 150,
+    buildTime: 14,
+    creditYield: 0,
+    maxTier: 2
   },
   powerWave: {
     type: "powerWave",
@@ -267,7 +335,11 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     supplyCapacity: 6,
     pressureBonus: 4,
     powerOutput: 16,
-    description: "Storm-fueled generator delivering spikes of energy during squalls."
+    description: "Storm-fueled generator delivering spikes of energy during squalls.",
+    buildCost: 260,
+    buildTime: 24,
+    creditYield: 0,
+    maxTier: 2
   },
   shipyard: {
     type: "shipyard",
@@ -278,7 +350,11 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     supplyCapacity: 15,
     pressureBonus: 10,
     powerOutput: -4,
-    description: "Produces hulls and determines the tier of vessels available."
+    description: "Produces hulls and determines the tier of vessels available.",
+    buildCost: 320,
+    buildTime: 28,
+    creditYield: 0,
+    maxTier: 3
   },
   drydock: {
     type: "drydock",
@@ -289,7 +365,11 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     supplyCapacity: 8,
     pressureBonus: 6,
     powerOutput: -2,
-    description: "Accelerates repairs at the cost of fuel and supply throughput."
+    description: "Accelerates repairs at the cost of fuel and supply throughput.",
+    buildCost: 210,
+    buildTime: 18,
+    creditYield: 0,
+    maxTier: 2
   },
   tradePost: {
     type: "tradePost",
@@ -300,7 +380,11 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     supplyCapacity: 4,
     pressureBonus: 8,
     powerOutput: 1,
-    description: "Generates credits by exchanging surplus goods with neutral traders."
+    description: "Generates credits by exchanging surplus goods with neutral traders.",
+    buildCost: 280,
+    buildTime: 26,
+    creditYield: 6,
+    maxTier: 2
   },
   coastalBattery: {
     type: "coastalBattery",
@@ -311,7 +395,11 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     supplyCapacity: 2,
     pressureBonus: 5,
     powerOutput: -3,
-    description: "Shore-based artillery requiring spotting and power to stay active."
+    description: "Shore-based artillery requiring spotting and power to stay active.",
+    buildCost: 240,
+    buildTime: 24,
+    creditYield: 0,
+    maxTier: 2
   },
   radar: {
     type: "radar",
@@ -322,7 +410,11 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     supplyCapacity: 3,
     pressureBonus: 7,
     powerOutput: -1,
-    description: "Extends detection radius and improves response to stealth threats."
+    description: "Extends detection radius and improves response to stealth threats.",
+    buildCost: 220,
+    buildTime: 18,
+    creditYield: 0,
+    maxTier: 2
   },
   airDock: {
     type: "airDock",
@@ -333,7 +425,11 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     supplyCapacity: 6,
     pressureBonus: 11,
     powerOutput: -4,
-    description: "Launches recon drones and decoys providing aerial intelligence."
+    description: "Launches recon drones and decoys providing aerial intelligence.",
+    buildCost: 360,
+    buildTime: 30,
+    creditYield: 0,
+    maxTier: 2
   },
   mineDepot: {
     type: "mineDepot",
@@ -344,7 +440,11 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     supplyCapacity: 2,
     pressureBonus: 6,
     powerOutput: -2,
-    description: "Maintains sea mine networks to disrupt hostile lanes."
+    description: "Maintains sea mine networks to disrupt hostile lanes.",
+    buildCost: 300,
+    buildTime: 28,
+    creditYield: 0,
+    maxTier: 2
   },
   commsJammer: {
     type: "commsJammer",
@@ -355,7 +455,11 @@ export const BUILDING_DEFINITIONS: Record<BuildingType, BuildingDefinition> = {
     supplyCapacity: 2,
     pressureBonus: 9,
     powerOutput: -3,
-    description: "Disrupts enemy orders and delays sensor refresh cycles."
+    description: "Disrupts enemy orders and delays sensor refresh cycles.",
+    buildCost: 320,
+    buildTime: 28,
+    creditYield: 0,
+    maxTier: 2
   }
 };
 
