@@ -1,8 +1,17 @@
 import { nanoid } from "nanoid";
-import type { Order, OrderTargetUnit, UnitDefinition, UnitSnapshot, UnitType, Vector2, WorldMap } from "@seelines/shared";
+import type {
+  Order,
+  OrderTargetUnit,
+  UnitDefinition,
+  UnitSnapshot,
+  UnitType,
+  Vector2,
+  WorldMap
+} from "@seelines/shared";
 import { UNIT_DEFINITIONS, distance } from "@seelines/shared";
 
 export type SimulationOrder = Order & { createdAt: number };
+export type UnitOwner = "player" | "computer";
 
 export interface UnitEntity {
   id: number;
@@ -14,6 +23,7 @@ export interface UnitEntity {
   orderQueue: SimulationOrder[];
   escortTarget?: number;
   selected: boolean;
+  owner: UnitOwner;
 }
 
 export interface SimulationConfig {
@@ -33,7 +43,7 @@ export class GameState {
     this.tickRate = config.tickRate;
   }
 
-  createUnit(type: UnitType, position: Vector2): UnitEntity {
+  createUnit(type: UnitType, position: Vector2, owner: UnitOwner = "player"): UnitEntity {
     const definition = UNIT_DEFINITIONS[type];
     const entity: UnitEntity = {
       id: this.#nextEntityId++,
@@ -43,7 +53,8 @@ export class GameState {
       velocity: { x: 0, y: 0 },
       hitpoints: definition.hitpoints,
       orderQueue: [],
-      selected: false
+      selected: false,
+      owner
     };
     this.units.set(entity.id, entity);
     return entity;

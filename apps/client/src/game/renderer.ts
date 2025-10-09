@@ -5,10 +5,15 @@ import type { UnitEntity } from "./state";
 
 const WATER_COLOR = 0x043355;
 const ISLAND_COLOR = 0x2e3b22;
-const UNIT_COLORS: Record<string, number> = {
+const PLAYER_UNIT_COLORS: Record<string, number> = {
   sloop: 0x64d4ff,
   corvette: 0x9de072,
   transport: 0xffd572
+};
+const COMPUTER_UNIT_COLORS: Record<string, number> = {
+  sloop: 0xff7b7b,
+  corvette: 0xffa36c,
+  transport: 0xffe17a
 };
 
 export class MapRenderer {
@@ -43,13 +48,14 @@ export class MapRenderer {
       let sprite = this.unitSprites.get(unit.id);
       if (!sprite) {
         sprite = new Sprite(Texture.WHITE);
-        sprite.tint = UNIT_COLORS[unit.type];
         sprite.anchor.set(0.5);
         sprite.width = TILE_SIZE * 0.6;
         sprite.height = TILE_SIZE * 0.6;
         this.unitLayer.addChild(sprite);
         this.unitSprites.set(unit.id, sprite);
       }
+      const tintPalette = unit.owner === "computer" ? COMPUTER_UNIT_COLORS : PLAYER_UNIT_COLORS;
+      sprite.tint = tintPalette[unit.type];
       sprite.position.set(unit.position.x * TILE_SIZE, unit.position.y * TILE_SIZE);
       sprite.alpha = unit.selected ? 1 : 0.85;
       sprite.scale.set(unit.selected ? 0.75 : 0.6);

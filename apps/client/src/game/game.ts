@@ -6,20 +6,23 @@ import { nanoid } from "nanoid";
 import { CameraController } from "./camera";
 import { MapRenderer } from "./renderer";
 import { GameState } from "./state";
-import type { SimulationOrder } from "./state";
+import type { SimulationOrder, UnitEntity } from "./state";
 import { createSkirmishMap } from "@seelines/shared";
-import type { UnitEntity } from "./state";
+import { AiController } from "./ai";
 
 const SELECT_THRESHOLD = 4;
 
 type OrderMode = "move" | "patrol" | "escort";
+type GameMode = "singleplayer" | "multiplayer";
 
 interface GameOptions {
   container: HTMLElement | null;
+  mode: GameMode;
 }
 
 export class Game {
   private readonly container: HTMLElement;
+  private readonly mode: GameMode;
   private app?: Application;
   private camera?: CameraController;
   private readonly state = new GameState({
@@ -35,14 +38,20 @@ export class Game {
   private debugPath?: Vector2[];
   private statusModeLabel?: HTMLElement | null;
   private statusSelectionLabel?: HTMLElement | null;
+  private statusOpponentLabel?: HTMLElement | null;
+  private aiController?: AiController;
 
   constructor(options: GameOptions) {
     if (!options.container) {
       throw new Error("Game container not provided");
     }
     this.container = options.container;
+    this.mode = options.mode;
     this.bootstrapUi();
     this.spawnInitialUnits();
+    if (this.mode === "singleplayer") {
+      this.aiController = new AiController({ state: this.state });
+    }
   }
 
   private bootstrapUi(): void {
@@ -51,6 +60,13 @@ export class Game {
     const escortButton = document.getElementById("order-escort");
     this.statusModeLabel = document.getElementById("status-mode");
     this.statusSelectionLabel = document.getElementById("status-selection");
+    this.statusOpponentLabel = document.getElementById("status-opponent");
+
+    if (this.statusOpponentLabel) {
+      this.statusOpponentLabel.textContent = `Opponent: ${
+        this.mode === "singleplayer" ? "Computer" : "Another Player"
+      }`;
+    }
 
     const setMode = (mode: OrderMode): void => {
       this.orderMode = mode;
@@ -74,15 +90,33 @@ export class Game {
   }
 
   private spawnInitialUnits(): void {
-    const spawnpoints: Array<{ type: UnitEntity["type"]; position: Vector2 }> = [
+    const playerSpawnpoints: Array<{ type: UnitEntity["type"]; position: Vector2 }> = [
       { type: "sloop", position: { x: 3.5, y: 12.5 } },
       { type: "corvette", position: { x: 5, y: 13.5 } },
-      { type: "transport", position: { x: 4.2, y: 15 } },
-      { type: "sloop", position: { x: 14, y: 4.5 } },
-      { type: "corvette", position: { x: 16, y: 4 } }
+      { type: "transport", position: { x: 4.2, y: 15 } }
     ];
-    for (const spawn of spawnpoints) {
-      this.state.createUnit(spawn.type, spawn.position);
+
+    for (const spawn of playerSpawnpoints) {
+      this.state.createUnit(spawn.type, spawn.position, "player");
+    }
+
+    if (this.mode === "singleplayer") {
+      const computerSpawnpoints: Array<{ type: UnitEntity["type"]; position: Vector2 }> = [
+        { type: "sloop", position: { x: 18.5, y: 4.5 } },
+        { type: "corvette", position: { x: 20.2, y: 5.8 } },
+        { type: "transport", position: { x: 21.4, y: 7.2 } }
+      ];
+      for (const spawn of computerSpawnpoints) {
+        this.state.createUnit(spawn.type, spawn.position, "computer");
+      }
+    } else {
+      const allySpawnpoints: Array<{ type: UnitEntity["type"]; position: Vector2 }> = [
+        { type: "sloop", position: { x: 14, y: 4.5 } },
+        { type: "corvette", position: { x: 16, y: 4 } }
+      ];
+      for (const spawn of allySpawnpoints) {
+        this.state.createUnit(spawn.type, spawn.position, "player");
+      }
     }
   }
 
@@ -121,6 +155,10 @@ export class Game {
   };
 
   private stepSimulation(dt: number): void {
+    if (this.mode === "singleplayer") {
+      this.aiController?.update();
+    }
+
     for (const unit of this.state.units.values()) {
       if (unit.orderQueue.length === 0) {
         unit.velocity.x *= 0.9;
@@ -287,20 +325,20 @@ export class Game {
   private attachPointerHandlers(): void {
     if (!this.app || !this.camera) return;
     const view = this.app.canvas;
-    view.addEventListener("contextmenu", event => event.preventDefault());
-    view.addEventListener("pointerdown", event => {
+    view.addEventListener("contextmenu", (event: MouseEvent) => event.preventDefault());
+    view.addEventListener("pointerdown", (event: PointerEvent) => {
       if (event.button !== 0) return;
       const point = this.camera?.screenToWorld(event);
       if (!point) return;
       this.pointerDown = { x: point.x / TILE_SIZE, y: point.y / TILE_SIZE };
     });
-    view.addEventListener("pointermove", event => {
+    view.addEventListener("pointermove", (event: PointerEvent) => {
       if (!this.pointerDown || !this.camera) return;
       const point = this.camera.screenToWorld(event);
       const current = { x: point.x / TILE_SIZE, y: point.y / TILE_SIZE };
       this.drawSelectionBox(this.pointerDown, current);
     });
-    view.addEventListener("pointerup", event => {
+    view.addEventListener("pointerup", (event: PointerEvent) => {
       const worldPoint = this.camera?.screenToWorld(event);
       if (!worldPoint) return;
       const tilePoint = { x: worldPoint.x / TILE_SIZE, y: worldPoint.y / TILE_SIZE };
@@ -346,7 +384,13 @@ export class Game {
     const maxX = Math.max(this.pointerDown.x, tilePoint.x);
     const maxY = Math.max(this.pointerDown.y, tilePoint.y);
     const selected = [...this.state.units.values()].filter(unit => {
-      return unit.position.x >= minX && unit.position.x <= maxX && unit.position.y >= minY && unit.position.y <= maxY;
+      if (unit.owner !== "player") return false;
+      return (
+        unit.position.x >= minX &&
+        unit.position.x <= maxX &&
+        unit.position.y >= minY &&
+        unit.position.y <= maxY
+      );
     });
     this.state.clearSelection();
     this.state.selectUnits(selected.map(unit => unit.id));
@@ -357,6 +401,7 @@ export class Game {
     let closest: UnitEntity | undefined;
     let closestDistance = Number.POSITIVE_INFINITY;
     for (const unit of this.state.units.values()) {
+      if (unit.owner !== "player") continue;
       const distance = Math.hypot(unit.position.x - tilePoint.x, unit.position.y - tilePoint.y);
       if (distance < 0.6 && distance < closestDistance) {
         closest = unit;
@@ -452,6 +497,7 @@ export class Game {
     let distance = Number.POSITIVE_INFINITY;
     for (const unit of this.state.units.values()) {
       if (exclude.has(unit.id)) continue;
+      if (unit.owner !== "player") continue;
       const d = Math.hypot(unit.position.x - point.x, unit.position.y - point.y);
       if (d < distance) {
         best = unit;
