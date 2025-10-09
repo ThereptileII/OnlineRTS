@@ -1,7 +1,7 @@
-import { nanoid } from "nanoid";
 import { findPath } from "@seelines/shared/pathfinding";
 import type { Order, Vector2 } from "@seelines/shared";
 import type { GameState, UnitEntity } from "./state";
+import { generateId } from "./id";
 
 interface AiControllerOptions {
   state: GameState;
@@ -100,7 +100,7 @@ export class AiController {
     }
     const queue = this.toQueue(path);
     const order: Order = {
-      id: `ai-${nanoid(6)}`,
+      id: `ai-${generateId(6)}`,
       type: "move",
       target: { kind: "point", x: target.x, y: target.y },
       metadata: { path, queue }
