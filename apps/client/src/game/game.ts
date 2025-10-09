@@ -2,13 +2,13 @@ import { Application, Container, Graphics } from "pixi.js";
 import { findPath } from "@seelines/shared/pathfinding";
 import { TILE_SIZE } from "@seelines/shared";
 import type { Order, Vector2 } from "@seelines/shared";
-import { nanoid } from "nanoid";
 import { CameraController } from "./camera";
 import { MapRenderer } from "./renderer";
 import { GameState } from "./state";
 import type { SimulationOrder, UnitEntity } from "./state";
 import { createSkirmishMap } from "@seelines/shared";
 import { AiController } from "./ai";
+import { generateId } from "./id";
 
 const SELECT_THRESHOLD = 4;
 
@@ -440,7 +440,7 @@ export class Game {
         if (!path) return undefined;
         const queue = this.toQueue(path);
         return {
-          id: nanoid(8),
+          id: generateId(8),
           type: "move",
           target: { kind: "point", x: tile.x, y: tile.y },
           metadata: { path, queue }
@@ -463,7 +463,7 @@ export class Game {
         this.statusModeLabel &&
           (this.statusModeLabel.textContent = "Mode: Patrol");
         return {
-          id: nanoid(8),
+          id: generateId(8),
           type: "patrol",
           target: { kind: "point", x: tile.x, y: tile.y },
           metadata: {
@@ -482,7 +482,7 @@ export class Game {
         const nearest = this.pickNearestUnit(targetPoint, new Set(units.map(unit => unit.id)));
         if (!nearest) return undefined;
         return {
-          id: nanoid(8),
+          id: generateId(8),
           type: "escort",
           target: { kind: "unit", unitId: nearest.id }
         } satisfies Order;

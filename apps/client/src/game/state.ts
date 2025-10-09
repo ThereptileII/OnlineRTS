@@ -1,4 +1,3 @@
-import { nanoid } from "nanoid";
 import type {
   Order,
   OrderTargetUnit,
@@ -9,6 +8,7 @@ import type {
   WorldMap
 } from "@seelines/shared";
 import { UNIT_DEFINITIONS, distance } from "@seelines/shared";
+import { generateId } from "./id";
 
 export type SimulationOrder = Order & { createdAt: number };
 export type UnitOwner = "player" | "computer";
@@ -111,7 +111,7 @@ export class GameState {
       position: { ...unit.position },
       velocity: { ...unit.velocity },
       orders: unit.orderQueue.map(order => ({
-        id: order.id ?? nanoid(6),
+        id: order.id ?? generateId(6),
         type: order.type,
         target: order.target,
         metadata: order.metadata
