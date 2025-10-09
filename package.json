@@ -1,4 +1,7 @@
 {
   "name": "seelines",
-  "private": true
+  "private": true,
+  "scripts": {
+    "build:offline": "node scripts/build-offline-client.mjs"
+  }
 }
