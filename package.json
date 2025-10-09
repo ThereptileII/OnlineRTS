@@ -3,5 +3,8 @@
   "private": true,
   "scripts": {
     "build:offline": "node scripts/build-offline-client.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.21.5"
   }
 }
