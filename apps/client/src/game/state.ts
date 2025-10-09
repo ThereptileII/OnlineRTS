@@ -132,30 +132,36 @@ export class GameState {
     return entity;
   }
 
-  enqueueOrder(unitIds: number[], order: Order): void {
-    const metadataClone = order.metadata ? JSON.parse(JSON.stringify(order.metadata)) : undefined;
-    const enriched: SimulationOrder = {
-      ...order,
-      createdAt: performance.now(),
-      metadata: metadataClone
-    };
+  enqueueOrder(unitIds: number[], order: Order, options: { append?: boolean } = {}): void {
+    const createdAt = performance.now();
     for (const id of unitIds) {
       const unit = this.units.get(id);
       if (!unit) continue;
-      switch (order.type) {
-        case "move":
-          unit.escortTarget = undefined;
-          break;
-        case "patrol":
-          unit.escortTarget = undefined;
-          break;
-        case "escort":
+      const metadataClone = order.metadata ? JSON.parse(JSON.stringify(order.metadata)) : undefined;
+      const enriched: SimulationOrder = {
+        ...order,
+        createdAt,
+        metadata: metadataClone
+      };
+      if (!options.append) {
+        switch (order.type) {
+          case "move":
+          case "patrol":
+            unit.escortTarget = undefined;
+            break;
+          case "escort":
+            unit.escortTarget = (order.target as OrderTargetUnit).unitId;
+            break;
+          default:
+            break;
+        }
+        unit.orderQueue = [enriched];
+      } else {
+        if (order.type === "escort") {
           unit.escortTarget = (order.target as OrderTargetUnit).unitId;
-          break;
-        default:
-          break;
+        }
+        unit.orderQueue = [...unit.orderQueue, enriched];
       }
-      unit.orderQueue = [enriched];
     }
   }
 
@@ -165,15 +171,43 @@ export class GameState {
     }
   }
 
-  selectUnits(ids: number[]): void {
+  selectUnits(ids: number[], mode: "replace" | "add" | "toggle" = "replace"): void {
     const idSet = new Set(ids);
+    if (mode === "replace") {
+      for (const unit of this.units.values()) {
+        unit.selected = idSet.has(unit.id);
+      }
+      return;
+    }
+
+    if (mode === "add") {
+      for (const unit of this.units.values()) {
+        if (idSet.has(unit.id)) {
+          unit.selected = true;
+        }
+      }
+      return;
+    }
+
     for (const unit of this.units.values()) {
-      unit.selected = idSet.has(unit.id);
+      if (idSet.has(unit.id)) {
+        unit.selected = !unit.selected;
+      }
     }
   }
 
   selectedUnits(): UnitEntity[] {
     return [...this.units.values()].filter(u => u.selected);
+  }
+
+  unitsByType(owner: UnitOwner, type: UnitType): UnitEntity[] {
+    const matches: UnitEntity[] = [];
+    for (const unit of this.units.values()) {
+      if (unit.owner !== owner) continue;
+      if (unit.type !== type) continue;
+      matches.push(unit);
+    }
+    return matches;
   }
 
   snapshot(): UnitSnapshot[] {

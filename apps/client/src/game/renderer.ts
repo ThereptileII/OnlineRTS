@@ -3,8 +3,8 @@ import type { Vector2, WorldMap } from "@seelines/shared";
 import { TILE_SIZE } from "@seelines/shared";
 import type { UnitEntity } from "./state";
 
-const WATER_COLOR = 0x043355;
-const ISLAND_COLOR = 0x2e3b22;
+const WATER_COLOR = 0x053862;
+const ISLAND_COLOR = 0x2f3e27;
 const PLAYER_UNIT_COLORS: Record<string, number> = {
   sloop: 0x64d4ff,
   corvette: 0x9de072,
@@ -84,7 +84,7 @@ export class MapRenderer {
     }
   }
 
-  updateUnits(units: UnitEntity[]): void {
+  updateUnits(units: UnitEntity[], selectionPulse = 0): void {
     const existingIds = new Set(this.unitSprites.keys());
     for (const unit of units) {
       existingIds.delete(unit.id);
@@ -100,8 +100,9 @@ export class MapRenderer {
       const tintPalette = unit.owner === "computer" ? COMPUTER_UNIT_COLORS : PLAYER_UNIT_COLORS;
       sprite.tint = tintPalette[unit.type] ?? 0xffffff;
       sprite.position.set(unit.position.x * TILE_SIZE, unit.position.y * TILE_SIZE);
-      sprite.alpha = unit.selected ? 1 : 0.85;
-      sprite.scale.set(unit.selected ? 0.75 : 0.6);
+      sprite.alpha = unit.selected ? 1 : 0.82;
+      const scaleBase = unit.selected ? 0.68 + selectionPulse * 0.18 : 0.6;
+      sprite.scale.set(scaleBase);
     }
 
     for (const staleId of existingIds) {
@@ -113,12 +114,18 @@ export class MapRenderer {
     }
   }
 
-  renderSelections(units: UnitEntity[]): void {
+  renderSelections(units: UnitEntity[], pulse = 0): void {
     this.selectionLayer.clear();
     for (const unit of units) {
       if (!unit.selected) continue;
-      this.selectionLayer.lineStyle({ width: 2, color: 0xffffff, alpha: 0.8 });
-      this.selectionLayer.drawCircle(unit.position.x * TILE_SIZE, unit.position.y * TILE_SIZE, TILE_SIZE * 0.45);
+      const x = unit.position.x * TILE_SIZE;
+      const y = unit.position.y * TILE_SIZE;
+      const outerRadius = TILE_SIZE * (0.42 + pulse * 0.3);
+      const innerRadius = outerRadius * 0.7;
+      this.selectionLayer.lineStyle({ width: 2, color: 0xffffff, alpha: 0.85 });
+      this.selectionLayer.drawCircle(x, y, outerRadius);
+      this.selectionLayer.lineStyle({ width: 1, color: 0x72e6ff, alpha: 0.6 });
+      this.selectionLayer.drawCircle(x, y, innerRadius);
     }
   }
 
@@ -133,7 +140,14 @@ export class MapRenderer {
       const to = path[i + 1];
       this.debugLayer.moveTo(from.x * TILE_SIZE, from.y * TILE_SIZE);
       this.debugLayer.lineTo(to.x * TILE_SIZE, to.y * TILE_SIZE);
+      this.debugLayer.beginFill(0x7ff2ff, 0.4);
+      this.debugLayer.drawCircle(from.x * TILE_SIZE, from.y * TILE_SIZE, TILE_SIZE * 0.12);
+      this.debugLayer.endFill();
     }
+    const last = path[path.length - 1];
+    this.debugLayer.beginFill(0x7ff2ff, 0.5);
+    this.debugLayer.drawCircle(last.x * TILE_SIZE, last.y * TILE_SIZE, TILE_SIZE * 0.14);
+    this.debugLayer.endFill();
   }
 
   renderStrategic(logistics: RenderLogistics): void {

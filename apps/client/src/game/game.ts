@@ -10,6 +10,7 @@ import { createSkirmishMap } from "@seelines/shared";
 import { AiController } from "./ai";
 import { generateId } from "./id";
 import { Soundscape } from "./soundscape";
+import { GraphicsEngine } from "./graphicsEngine";
 
 const SELECT_THRESHOLD = 4;
 
@@ -34,6 +35,7 @@ export class Game {
   private readonly world = new Container();
   private readonly selectionBox = new Graphics();
   private pointerDown?: Vector2;
+  private pointerDragActive = false;
   private orderMode: OrderMode = "move";
   private pendingPatrol?: { origin: Vector2 };
   private debugPath?: Vector2[];
@@ -45,6 +47,19 @@ export class Game {
   private convoyStatusList?: HTMLElement | null;
   private aiController?: AiController;
   private readonly soundscape = new Soundscape();
+  private readonly graphics = new GraphicsEngine();
+  private timeScale = 1;
+  private targetTimeScale = 1;
+  private tempoBoostUntil = 0;
+  private readonly handleResize = (): void => {
+    if (!this.app) return;
+    const view = this.getCanvas();
+    if (!view) return;
+    const width = view.width || view.clientWidth || window.innerWidth;
+    const height = view.height || view.clientHeight || window.innerHeight;
+    this.graphics.resize(width, height);
+    this.camera?.syncViewport();
+  };
 
   constructor(options: GameOptions) {
     if (!options.container) {
@@ -58,6 +73,14 @@ export class Game {
       this.aiController = new AiController({ state: this.state });
     }
     this.updateStrategicHud();
+  }
+
+  private now(): number {
+    return typeof performance !== "undefined" ? performance.now() : Date.now();
+  }
+
+  private pulseTempo(duration = 3200): void {
+    this.tempoBoostUntil = Math.max(this.tempoBoostUntil, this.now() + duration);
   }
 
   private bootstrapUi(): void {
@@ -160,12 +183,15 @@ export class Game {
 
     this.world.addChild(this.renderer.container);
     this.world.addChild(this.selectionBox);
-    this.app.stage.addChild(this.world);
+    this.graphics.mount(this.app.stage);
+    this.graphics.setWorld(this.world);
     this.camera = new CameraController({
       view: canvas,
       world: this.world
     });
     this.container.appendChild(canvas);
+    this.handleResize();
+    window.addEventListener("resize", this.handleResize);
     this.attachPointerHandlers();
     this.app.ticker.add(this.update);
     this.soundscape.start();
@@ -177,17 +203,58 @@ export class Game {
     this.app.ticker.remove(this.update);
     this.app.destroy();
     this.soundscape.stop();
+    window.removeEventListener("resize", this.handleResize);
+    this.camera?.destroy();
+    this.graphics.detach();
   }
 
   private readonly update = (deltaTime: number): void => {
-    const dt = deltaTime / (this.state.tickRate / 60);
-    this.state.tick += 1;
+    const deltaSeconds = deltaTime / 60;
+    const activeUnits = this.countActiveUnits();
+    const now = this.now();
+    const baseTarget = activeUnits > 0 ? 1.18 : 1;
+    const boostTarget = now < this.tempoBoostUntil ? 1.32 : 1;
+    this.targetTimeScale = Math.max(baseTarget, boostTarget);
+    const easing = 1 - Math.exp(-deltaSeconds * 4.5);
+    this.timeScale += (this.targetTimeScale - this.timeScale) * easing;
+    const scaledDeltaTime = deltaTime * this.timeScale;
+    const dt = scaledDeltaTime / (this.state.tickRate / 60);
+    this.state.tick += this.timeScale;
     this.stepSimulation(dt);
     this.state.updateStrategicSystems(dt);
     this.handleEvents(this.state.consumeEvents());
     this.updateStrategicHud();
+    this.camera?.update(deltaSeconds * this.timeScale);
+    this.graphics.update(deltaSeconds * this.timeScale, this.targetTimeScale);
     this.render();
   };
+
+  private countActiveUnits(): number {
+    let active = 0;
+    for (const unit of this.state.units.values()) {
+      if (unit.orderQueue.length > 0) {
+        active += 1;
+        continue;
+      }
+      if (Math.abs(unit.velocity.x) > 0.015 || Math.abs(unit.velocity.y) > 0.015) {
+        active += 1;
+      }
+    }
+    return active;
+  }
+
+  private approach(current: number, target: number, maxDelta: number): number {
+    if (maxDelta <= 0) {
+      return target;
+    }
+    if (current < target) {
+      return Math.min(current + maxDelta, target);
+    }
+    if (current > target) {
+      return Math.max(current - maxDelta, target);
+    }
+    return target;
+  }
 
   private stepSimulation(dt: number): void {
     if (this.mode === "singleplayer") {
@@ -196,8 +263,16 @@ export class Game {
 
     for (const unit of this.state.units.values()) {
       if (unit.orderQueue.length === 0) {
-        unit.velocity.x *= 0.9;
-        unit.velocity.y *= 0.9;
+        const deceleration = (unit.definition.acceleration / this.state.tickRate) * dt * 0.75;
+        unit.velocity.x = this.approach(unit.velocity.x, 0, deceleration);
+        unit.velocity.y = this.approach(unit.velocity.y, 0, deceleration);
+        if (Math.abs(unit.velocity.x) > 0.0001 || Math.abs(unit.velocity.y) > 0.0001) {
+          unit.position.x += unit.velocity.x * dt;
+          unit.position.y += unit.velocity.y * dt;
+        } else {
+          unit.velocity.x = 0;
+          unit.velocity.y = 0;
+        }
         continue;
       }
       const order = unit.orderQueue[0];
@@ -297,21 +372,32 @@ export class Game {
     const dx = target.x - unit.position.x;
     const dy = target.y - unit.position.y;
     const distance = Math.hypot(dx, dy);
-    const arrivalThreshold = 0.1;
+    const speedPerTick = unit.definition.maxSpeed / this.state.tickRate;
+    const arrivalThreshold = Math.max(0.08, speedPerTick * dt * 1.25);
     if (distance < arrivalThreshold) {
       unit.position.x = target.x;
       unit.position.y = target.y;
+      unit.velocity.x = 0;
+      unit.velocity.y = 0;
       onArrival();
       return;
     }
     const directionX = dx / distance;
     const directionY = dy / distance;
-    const speedPerTick = unit.definition.maxSpeed / this.state.tickRate;
-    const delta = speedPerTick * dt;
-    unit.velocity.x = directionX * delta;
-    unit.velocity.y = directionY * delta;
-    unit.position.x += unit.velocity.x;
-    unit.position.y += unit.velocity.y;
+    const desiredVelocityX = directionX * speedPerTick;
+    const desiredVelocityY = directionY * speedPerTick;
+    const accelerationPerTick = (unit.definition.acceleration / this.state.tickRate) * dt;
+    unit.velocity.x = this.approach(unit.velocity.x, desiredVelocityX, accelerationPerTick);
+    unit.velocity.y = this.approach(unit.velocity.y, desiredVelocityY, accelerationPerTick);
+    unit.position.x += unit.velocity.x * dt;
+    unit.position.y += unit.velocity.y * dt;
+    if (Math.hypot(target.x - unit.position.x, target.y - unit.position.y) <= arrivalThreshold) {
+      unit.position.x = target.x;
+      unit.position.y = target.y;
+      unit.velocity.x = 0;
+      unit.velocity.y = 0;
+      onArrival();
+    }
   }
 
   private ensureQueue(order: SimulationOrder, startTile: Vector2, defaultPath: Vector2[]): Record<string, unknown> {
@@ -363,31 +449,59 @@ export class Game {
     if (!view) return;
     view.addEventListener("contextmenu", (event: MouseEvent) => event.preventDefault());
     view.addEventListener("pointerdown", (event: PointerEvent) => {
-      if (event.button !== 0) return;
-      const point = this.camera?.screenToWorld(event);
-      if (!point) return;
-      this.pointerDown = { x: point.x / TILE_SIZE, y: point.y / TILE_SIZE };
+      if (event.button === 0) {
+        const point = this.camera?.screenToWorld(event);
+        if (!point) return;
+        this.pointerDown = { x: point.x / TILE_SIZE, y: point.y / TILE_SIZE };
+        this.pointerDragActive = false;
+      }
+      if (event.button === 0 || event.button === 2) {
+        this.camera?.notifyInteraction();
+      }
     });
     view.addEventListener("pointermove", (event: PointerEvent) => {
       if (!this.pointerDown || !this.camera) return;
       const point = this.camera.screenToWorld(event);
       const current = { x: point.x / TILE_SIZE, y: point.y / TILE_SIZE };
-      this.drawSelectionBox(this.pointerDown, current);
+      if (!this.pointerDragActive) {
+        const dx = Math.abs(current.x - this.pointerDown.x);
+        const dy = Math.abs(current.y - this.pointerDown.y);
+        if (dx > SELECT_THRESHOLD / TILE_SIZE || dy > SELECT_THRESHOLD / TILE_SIZE) {
+          this.pointerDragActive = true;
+        }
+      }
+      if (this.pointerDragActive) {
+        this.drawSelectionBox(this.pointerDown, current);
+      }
     });
     view.addEventListener("pointerup", (event: PointerEvent) => {
       const worldPoint = this.camera?.screenToWorld(event);
       if (!worldPoint) return;
       const tilePoint = { x: worldPoint.x / TILE_SIZE, y: worldPoint.y / TILE_SIZE };
       if (event.button === 0) {
-        this.handleSelect(tilePoint);
+        const additive = event.shiftKey || event.metaKey || event.ctrlKey;
+        const doubleClick = event.detail >= 2;
+        this.handleSelect(tilePoint, {
+          additive,
+          doubleClick,
+          fromDrag: this.pointerDragActive
+        });
       } else if (event.button === 2) {
-        this.handleOrder(tilePoint);
+        const append = event.shiftKey || event.metaKey || event.ctrlKey;
+        this.handleOrder(tilePoint, { append });
       }
       this.pointerDown = undefined;
+      this.pointerDragActive = false;
       this.selectionBox.clear();
     });
     view.addEventListener("pointerleave", () => {
       this.pointerDown = undefined;
+      this.pointerDragActive = false;
+      this.selectionBox.clear();
+    });
+    view.addEventListener("pointercancel", () => {
+      this.pointerDown = undefined;
+      this.pointerDragActive = false;
       this.selectionBox.clear();
     });
   }
@@ -413,65 +527,109 @@ export class Game {
     this.selectionBox.endFill();
   }
 
-  private handleSelect(tilePoint: Vector2): void {
-    if (!this.pointerDown) {
-      this.selectSingle(tilePoint);
-      return;
-    }
-    const dx = Math.abs(tilePoint.x - this.pointerDown.x);
-    const dy = Math.abs(tilePoint.y - this.pointerDown.y);
-    if (dx < SELECT_THRESHOLD / TILE_SIZE && dy < SELECT_THRESHOLD / TILE_SIZE) {
-      this.selectSingle(tilePoint);
-      return;
-    }
-    const minX = Math.min(this.pointerDown.x, tilePoint.x);
-    const minY = Math.min(this.pointerDown.y, tilePoint.y);
-    const maxX = Math.max(this.pointerDown.x, tilePoint.x);
-    const maxY = Math.max(this.pointerDown.y, tilePoint.y);
-    const selected = [...this.state.units.values()].filter(unit => {
-      if (unit.owner !== "player") return false;
-      return (
-        unit.position.x >= minX &&
-        unit.position.x <= maxX &&
-        unit.position.y >= minY &&
-        unit.position.y <= maxY
-      );
-    });
-    this.state.clearSelection();
-    this.state.selectUnits(selected.map(unit => unit.id));
-    this.updateSelectionStatus();
-  }
-
-  private selectSingle(tilePoint: Vector2): void {
-    let closest: UnitEntity | undefined;
-    let closestDistance = Number.POSITIVE_INFINITY;
-    for (const unit of this.state.units.values()) {
-      if (unit.owner !== "player") continue;
-      const distance = Math.hypot(unit.position.x - tilePoint.x, unit.position.y - tilePoint.y);
-      if (distance < 0.6 && distance < closestDistance) {
-        closest = unit;
-        closestDistance = distance;
+  private handleSelect(
+    tilePoint: Vector2,
+    options: { additive: boolean; doubleClick: boolean; fromDrag: boolean }
+  ): void {
+    if (options.fromDrag && this.pointerDown) {
+      const minX = Math.min(this.pointerDown.x, tilePoint.x);
+      const minY = Math.min(this.pointerDown.y, tilePoint.y);
+      const maxX = Math.max(this.pointerDown.x, tilePoint.x);
+      const maxY = Math.max(this.pointerDown.y, tilePoint.y);
+      const selected = [...this.state.units.values()].filter(unit => {
+        if (unit.owner !== "player") return false;
+        return (
+          unit.position.x >= minX &&
+          unit.position.x <= maxX &&
+          unit.position.y >= minY &&
+          unit.position.y <= maxY
+        );
+      });
+      if (!selected.length) {
+        if (!options.additive) {
+          this.state.clearSelection();
+          this.updateSelectionStatus();
+        }
+        return;
       }
+      const mode = options.additive ? "add" : "replace";
+      this.state.selectUnits(selected.map(unit => unit.id), mode);
+      this.focusOnUnits(selected);
+      this.updateSelectionStatus();
+      this.pulseTempo(1800);
+      return;
     }
-    if (!closest) {
-      this.state.clearSelection();
-    } else {
-      this.state.selectUnits([closest.id]);
-    }
-    this.updateSelectionStatus();
+
+    this.selectSingle(tilePoint, { additive: options.additive, doubleClick: options.doubleClick });
   }
 
-  private handleOrder(tilePoint: Vector2): void {
+  private selectSingle(tilePoint: Vector2, options: { additive: boolean; doubleClick: boolean }): void {
+    const clicked = this.pickNearestUnit(tilePoint);
+    if (!clicked) {
+      if (!options.additive) {
+        this.state.clearSelection();
+        this.updateSelectionStatus();
+      }
+      return;
+    }
+
+    if (options.doubleClick) {
+      const group = this.state.unitsByType(clicked.owner, clicked.type);
+      const mode = options.additive ? "add" : "replace";
+      this.state.selectUnits(group.map(unit => unit.id), mode);
+      this.focusOnUnits(group);
+      this.updateSelectionStatus();
+      this.pulseTempo(2400);
+      return;
+    }
+
+    if (options.additive) {
+      if (clicked.selected) {
+        this.state.selectUnits([clicked.id], "toggle");
+        this.updateSelectionStatus();
+        return;
+      }
+      this.state.selectUnits([clicked.id], "add");
+      this.focusOnUnits([clicked]);
+      this.updateSelectionStatus();
+      this.pulseTempo(1600);
+      return;
+    }
+
+    this.state.selectUnits([clicked.id], "replace");
+    this.focusOnUnits([clicked]);
+    this.updateSelectionStatus();
+    this.pulseTempo(1600);
+  }
+
+  private focusOnUnits(units: UnitEntity[], immediate = false): void {
+    if (!this.camera || units.length === 0) return;
+    let sumX = 0;
+    let sumY = 0;
+    for (const unit of units) {
+      sumX += unit.position.x;
+      sumY += unit.position.y;
+    }
+    const centerX = (sumX / units.length) * TILE_SIZE;
+    const centerY = (sumY / units.length) * TILE_SIZE;
+    this.camera.focusOn({ x: centerX, y: centerY }, { immediate, soft: !immediate });
+  }
+
+  private handleOrder(tilePoint: Vector2, options: { append: boolean }): void {
     const selected = this.state.selectedUnits();
     if (selected.length === 0) return;
     const order = this.composeOrder(selected, tilePoint);
     if (!order) return;
     this.state.enqueueOrder(
       selected.map(unit => unit.id),
-      order
+      order,
+      { append: options.append }
     );
-    this.debugPath = order.metadata?.path as Vector2[] | undefined;
+    const queue = order.metadata?.queue as Vector2[] | undefined;
+    const path = order.metadata?.path as Vector2[] | undefined;
+    this.debugPath = queue ?? (path ? path.map(tile => this.tileToWorld(tile)) : undefined);
     this.soundscape.playOrderConfirm();
+    this.pulseTempo(options.append ? 1800 : 2600);
   }
 
   private composeOrder(units: UnitEntity[], targetPoint: Vector2): Order | undefined {
@@ -559,8 +717,9 @@ export class Game {
 
   private render(): void {
     const units = [...this.state.units.values()];
-    this.renderer.updateUnits(units);
-    this.renderer.renderSelections(units);
+    const selectionPulse = this.graphics.getSelectionPulse();
+    this.renderer.updateUnits(units, selectionPulse);
+    this.renderer.renderSelections(units, selectionPulse);
     this.renderer.renderDebugPath(this.debugPath);
     this.renderer.renderStrategic(this.state.getRenderableLogistics());
   }
@@ -608,21 +767,25 @@ export class Game {
           this.statusLogisticsLabel &&
             (this.statusLogisticsLabel.textContent = `Alert: Convoy ${event.convoyId} under attack!`);
           this.soundscape.playAlert();
+          this.pulseTempo(2600);
           break;
         case "convoyRestored":
           this.statusLogisticsLabel &&
             (this.statusLogisticsLabel.textContent = `Convoy ${event.convoyId} back online.`);
           this.soundscape.playRecovery();
+          this.pulseTempo(1800);
           break;
         case "convoyDelivered":
           this.statusLogisticsLabel &&
             (this.statusLogisticsLabel.textContent = `Supplies delivered via ${event.convoyId}.`);
           this.soundscape.playDelivery();
+          this.pulseTempo(1800);
           break;
         case "islandCritical":
           this.statusLogisticsLabel &&
             (this.statusLogisticsLabel.textContent = `Critical pressure at ${event.islandId}!`);
           this.soundscape.playAlert();
+          this.pulseTempo(3000);
           break;
         default:
           break;
