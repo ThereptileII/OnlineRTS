@@ -1,4 +1,5 @@
-import { cp, mkdir, rm } from "fs/promises";
+import { access, cp, mkdir, rm } from "fs/promises";
+import { constants as fsConstants } from "fs";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import { dirname, resolve } from "path";
@@ -25,7 +26,17 @@ const run = (command, args, options = {}) =>
     });
   });
 
+const ensureClientDependencies = async () => {
+  try {
+    await access(resolve(clientDir, "node_modules", "vite", "package.json"), fsConstants.F_OK);
+  } catch {
+    console.log("Installing client dependencies...");
+    await run("npm", ["install"], { cwd: clientDir });
+  }
+};
+
 const buildOffline = async () => {
+  await ensureClientDependencies();
   await run("npm", ["run", "build"], { cwd: clientDir });
   await rm(offlineDir, { recursive: true, force: true });
   await mkdir(offlineDir, { recursive: true });
