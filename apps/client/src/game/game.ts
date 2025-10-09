@@ -5,10 +5,11 @@ import type { Order, Vector2 } from "@seelines/shared";
 import { CameraController } from "./camera";
 import { MapRenderer } from "./renderer";
 import { GameState } from "./state";
-import type { SimulationOrder, UnitEntity } from "./state";
+import type { GameEvent, SimulationOrder, UnitEntity } from "./state";
 import { createSkirmishMap } from "@seelines/shared";
 import { AiController } from "./ai";
 import { generateId } from "./id";
+import { Soundscape } from "./soundscape";
 
 const SELECT_THRESHOLD = 4;
 
@@ -39,7 +40,11 @@ export class Game {
   private statusModeLabel?: HTMLElement | null;
   private statusSelectionLabel?: HTMLElement | null;
   private statusOpponentLabel?: HTMLElement | null;
+  private statusLogisticsLabel?: HTMLElement | null;
+  private islandStatusList?: HTMLElement | null;
+  private convoyStatusList?: HTMLElement | null;
   private aiController?: AiController;
+  private readonly soundscape = new Soundscape();
 
   constructor(options: GameOptions) {
     if (!options.container) {
@@ -52,6 +57,7 @@ export class Game {
     if (this.mode === "singleplayer") {
       this.aiController = new AiController({ state: this.state });
     }
+    this.updateStrategicHud();
   }
 
   private bootstrapUi(): void {
@@ -61,6 +67,9 @@ export class Game {
     this.statusModeLabel = document.getElementById("status-mode");
     this.statusSelectionLabel = document.getElementById("status-selection");
     this.statusOpponentLabel = document.getElementById("status-opponent");
+    this.statusLogisticsLabel = document.getElementById("status-logistics");
+    this.islandStatusList = document.getElementById("island-status");
+    this.convoyStatusList = document.getElementById("convoy-status");
 
     if (this.statusOpponentLabel) {
       this.statusOpponentLabel.textContent = `Opponent: ${
@@ -93,7 +102,9 @@ export class Game {
     const playerSpawnpoints: Array<{ type: UnitEntity["type"]; position: Vector2 }> = [
       { type: "sloop", position: { x: 3.5, y: 12.5 } },
       { type: "corvette", position: { x: 5, y: 13.5 } },
-      { type: "transport", position: { x: 4.2, y: 15 } }
+      { type: "transport", position: { x: 4.2, y: 15 } },
+      { type: "frigate", position: { x: 6.5, y: 12.5 } },
+      { type: "destroyer", position: { x: 7.8, y: 13.2 } }
     ];
 
     for (const spawn of playerSpawnpoints) {
@@ -104,7 +115,9 @@ export class Game {
       const computerSpawnpoints: Array<{ type: UnitEntity["type"]; position: Vector2 }> = [
         { type: "sloop", position: { x: 18.5, y: 4.5 } },
         { type: "corvette", position: { x: 20.2, y: 5.8 } },
-        { type: "transport", position: { x: 21.4, y: 7.2 } }
+        { type: "transport", position: { x: 21.4, y: 7.2 } },
+        { type: "frigate", position: { x: 19.2, y: 6.7 } },
+        { type: "submarine", position: { x: 17.6, y: 6.1 } }
       ];
       for (const spawn of computerSpawnpoints) {
         this.state.createUnit(spawn.type, spawn.position, "computer");
@@ -155,6 +168,7 @@ export class Game {
     this.container.appendChild(canvas);
     this.attachPointerHandlers();
     this.app.ticker.add(this.update);
+    this.soundscape.start();
     this.render();
   }
 
@@ -162,12 +176,16 @@ export class Game {
     if (!this.app) return;
     this.app.ticker.remove(this.update);
     this.app.destroy();
+    this.soundscape.stop();
   }
 
   private readonly update = (deltaTime: number): void => {
     const dt = deltaTime / (this.state.tickRate / 60);
     this.state.tick += 1;
     this.stepSimulation(dt);
+    this.state.updateStrategicSystems(dt);
+    this.handleEvents(this.state.consumeEvents());
+    this.updateStrategicHud();
     this.render();
   };
 
@@ -453,6 +471,7 @@ export class Game {
       order
     );
     this.debugPath = order.metadata?.path as Vector2[] | undefined;
+    this.soundscape.playOrderConfirm();
   }
 
   private composeOrder(units: UnitEntity[], targetPoint: Vector2): Order | undefined {
@@ -543,6 +562,7 @@ export class Game {
     this.renderer.updateUnits(units);
     this.renderer.renderSelections(units);
     this.renderer.renderDebugPath(this.debugPath);
+    this.renderer.renderStrategic(this.state.getRenderableLogistics());
   }
 
   private updateSelectionStatus(): void {
@@ -553,6 +573,60 @@ export class Game {
       label.textContent = "No units selected";
     } else {
       label.textContent = `${selected.length} unit${selected.length > 1 ? "s" : ""} selected`;
+    }
+  }
+
+  private updateStrategicHud(): void {
+    const overview = this.state.getStrategicOverview("player");
+    if (this.islandStatusList) {
+      this.islandStatusList.innerHTML = overview.islands
+        .map(island => {
+          const pressure = island.pressure.toFixed(1).padStart(4, " ");
+          const target = island.targetPressure.toFixed(0).padStart(3, " ");
+          const supply = island.supply.toFixed(1);
+          const storage = island.storage.toFixed(1);
+          return `<li><span class="label">${island.name}</span><span class="value">${pressure}% → ${target}%</span><span class="value">${supply}/${storage}t</span></li>`;
+        })
+        .join("");
+    }
+    if (this.convoyStatusList) {
+      this.convoyStatusList.innerHTML = overview.convoys
+        .map(convoy => {
+          const penalty = Math.round(convoy.weatherPenalty * 100);
+          const status = convoy.disrupted ? "RAIDED" : "Clear";
+          return `<li class="${convoy.disrupted ? "warning" : "ok"}"><span class="label">${convoy.id}</span><span class="value">${status}</span><span class="value">Wx ${penalty}%</span></li>`;
+        })
+        .join("");
+    }
+  }
+
+  private handleEvents(events: GameEvent[]): void {
+    if (!events.length) return;
+    for (const event of events) {
+      switch (event.type) {
+        case "convoyDisrupted":
+          this.statusLogisticsLabel &&
+            (this.statusLogisticsLabel.textContent = `Alert: Convoy ${event.convoyId} under attack!`);
+          this.soundscape.playAlert();
+          break;
+        case "convoyRestored":
+          this.statusLogisticsLabel &&
+            (this.statusLogisticsLabel.textContent = `Convoy ${event.convoyId} back online.`);
+          this.soundscape.playRecovery();
+          break;
+        case "convoyDelivered":
+          this.statusLogisticsLabel &&
+            (this.statusLogisticsLabel.textContent = `Supplies delivered via ${event.convoyId}.`);
+          this.soundscape.playDelivery();
+          break;
+        case "islandCritical":
+          this.statusLogisticsLabel &&
+            (this.statusLogisticsLabel.textContent = `Critical pressure at ${event.islandId}!`);
+          this.soundscape.playAlert();
+          break;
+        default:
+          break;
+      }
     }
   }
 }

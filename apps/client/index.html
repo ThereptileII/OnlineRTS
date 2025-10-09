@@ -64,6 +64,74 @@
         gap: 0.1rem;
       }
 
+      .strategic-panel {
+        position: absolute;
+        bottom: 1rem;
+        left: 1rem;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(160px, 220px));
+        gap: 1rem;
+        background: rgba(5, 32, 52, 0.76);
+        border: 1px solid rgba(108, 204, 255, 0.2);
+        border-radius: 10px;
+        padding: 1rem;
+        pointer-events: auto;
+        font-size: 0.8rem;
+        backdrop-filter: blur(2px);
+      }
+
+      .strategic-panel section {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+      }
+
+      .strategic-panel h2 {
+        margin: 0;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 0.75rem;
+        color: rgba(200, 242, 255, 0.85);
+      }
+
+      .strategic-panel ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+      }
+
+      .strategic-panel li {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.4rem;
+        background: rgba(10, 64, 92, 0.35);
+        padding: 0.35rem 0.5rem;
+        border-radius: 6px;
+      }
+
+      .strategic-panel li .label {
+        font-weight: 600;
+        color: rgba(229, 247, 255, 0.9);
+      }
+
+      .strategic-panel li .value {
+        font-variant-numeric: tabular-nums;
+        color: rgba(197, 230, 255, 0.85);
+      }
+
+      .strategic-panel li.warning {
+        background: rgba(164, 55, 48, 0.45);
+        color: #ffe3d8;
+      }
+
+      .strategic-panel li.ok {
+        background: rgba(48, 136, 116, 0.45);
+        color: #dff8f0;
+      }
+
       #mode-menu {
         position: absolute;
         inset: 0;
@@ -137,7 +205,18 @@
           <span id="status-mode">Mode: Move</span>
           <span id="status-selection">No units selected</span>
           <span id="status-opponent">Opponent: —</span>
+          <span id="status-logistics">Logistics stable</span>
         </div>
+      </div>
+      <div class="strategic-panel">
+        <section>
+          <h2>Islands</h2>
+          <ul id="island-status"></ul>
+        </section>
+        <section>
+          <h2>Convoys</h2>
+          <ul id="convoy-status"></ul>
+        </section>
       </div>
     </div>
     <script type="module" src="./src/main.ts"></script>
