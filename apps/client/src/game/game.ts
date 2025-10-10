@@ -1,7 +1,7 @@
 import { Application, Container, Graphics } from "pixi.js";
 import { findPath } from "@seelines/shared/pathfinding";
-import { TILE_SIZE } from "@seelines/shared";
-import type { Order, Vector2 } from "@seelines/shared";
+import { BUILDING_DEFINITIONS, TILE_SIZE, UNIT_DEFINITIONS } from "@seelines/shared";
+import type { BuildingType, Order, UnitType, Vector2 } from "@seelines/shared";
 import { CameraController } from "./camera";
 import { MapRenderer } from "./renderer";
 import { GameState } from "./state";
@@ -16,6 +16,7 @@ const SELECT_THRESHOLD = 4;
 
 type OrderMode = "move" | "patrol" | "escort";
 type GameMode = "singleplayer" | "multiplayer";
+type StrategicOverview = ReturnType<GameState["getStrategicOverview"]>;
 
 interface GameOptions {
   container: HTMLElement | null;
@@ -45,6 +46,14 @@ export class Game {
   private statusLogisticsLabel?: HTMLElement | null;
   private islandStatusList?: HTMLElement | null;
   private convoyStatusList?: HTMLElement | null;
+  private buildQueueList?: HTMLElement | null;
+  private shipQueueList?: HTMLElement | null;
+  private resourceCreditsLabel?: HTMLElement | null;
+  private resourceSupplyLabel?: HTMLElement | null;
+  private intelLogList?: HTMLElement | null;
+  private readonly buildingButtons = new Map<BuildingType, HTMLButtonElement>();
+  private readonly shipButtons = new Map<UnitType, HTMLButtonElement>();
+  private activeIslandId?: string;
   private aiController?: AiController;
   private readonly soundscape = new Soundscape();
   private readonly graphics = new GraphicsEngine();
@@ -69,6 +78,7 @@ export class Game {
     this.mode = options.mode;
     this.bootstrapUi();
     this.spawnInitialUnits();
+    this.activeIslandId = this.state.firstIslandId("player");
     if (this.mode === "singleplayer") {
       this.aiController = new AiController({ state: this.state });
     }
@@ -93,6 +103,11 @@ export class Game {
     this.statusLogisticsLabel = document.getElementById("status-logistics");
     this.islandStatusList = document.getElementById("island-status");
     this.convoyStatusList = document.getElementById("convoy-status");
+    this.buildQueueList = document.getElementById("construction-queue");
+    this.shipQueueList = document.getElementById("shipyard-queue");
+    this.resourceCreditsLabel = document.getElementById("resource-credits");
+    this.resourceSupplyLabel = document.getElementById("resource-supply");
+    this.intelLogList = document.getElementById("logistics-feed");
 
     if (this.statusOpponentLabel) {
       this.statusOpponentLabel.textContent = `Opponent: ${
@@ -114,11 +129,185 @@ export class Game {
     patrolButton?.addEventListener("click", () => setMode("patrol"));
     escortButton?.addEventListener("click", () => setMode("escort"));
 
+    const buildingButtons = document.querySelectorAll<HTMLButtonElement>("[data-building]");
+    const shipButtons = document.querySelectorAll<HTMLButtonElement>("[data-ship]");
+
+    for (const button of buildingButtons) {
+      const type = button.dataset.building as BuildingType | undefined;
+      if (!type) continue;
+      const blueprint = BUILDING_DEFINITIONS[type];
+      const hotkey = button.dataset.hotkey;
+      button.innerHTML = `<span class="action-title">${blueprint.displayName}</span><span class="action-meta">${
+        blueprint.buildCost
+      }C · ${blueprint.buildTime}s${hotkey ? ` · ${hotkey.toUpperCase()}` : ""}</span>`;
+      button.addEventListener("click", () => this.queueBuilding(type));
+      this.buildingButtons.set(type, button);
+    }
+
+    for (const button of shipButtons) {
+      const type = button.dataset.ship as UnitType | undefined;
+      if (!type) continue;
+      const definition = UNIT_DEFINITIONS[type];
+      const hotkey = button.dataset.hotkey;
+      button.innerHTML = `<span class="action-title">${definition.displayName}</span><span class="action-meta">${
+        definition.buildCost
+      }C · ${definition.buildTime}s · +${definition.supplyCost} SP${hotkey ? ` · ${hotkey.toUpperCase()}` : ""}</span>`;
+      button.addEventListener("click", () => this.queueShip(type));
+      this.shipButtons.set(type, button);
+    }
+
+    this.islandStatusList?.addEventListener("click", event => {
+      const target = (event.target as HTMLElement | null)?.closest<HTMLLIElement>("[data-island]");
+      if (!target) return;
+      this.activeIslandId = target.dataset.island ?? this.activeIslandId;
+      this.updateStrategicHud();
+    });
+
     window.addEventListener("keydown", event => {
       if (event.key === "m" || event.key === "M") setMode("move");
       if (event.key === "p" || event.key === "P") setMode("patrol");
       if (event.key === "e" || event.key === "E") setMode("escort");
+      this.handleProductionHotkey(event.key);
     });
+
+    this.refreshProductionButtons(this.state.getStrategicOverview("player"));
+  }
+
+  private handleProductionHotkey(key: string): void {
+    if (!key) return;
+    const normalized = key.toLowerCase();
+    const tryActivate = <T>(buttons: Map<T, HTMLButtonElement>): boolean => {
+      for (const button of buttons.values()) {
+        const hotkey = button.dataset.hotkey;
+        if (!hotkey || button.disabled) continue;
+        if (hotkey.toLowerCase() === normalized) {
+          button.click();
+          return true;
+        }
+      }
+      return false;
+    };
+    if (tryActivate(this.buildingButtons)) {
+      return;
+    }
+    void tryActivate(this.shipButtons);
+  }
+
+  private getIslandName(islandId: string): string {
+    const overview = this.state.getStrategicOverview("player");
+    return overview.islands.find(island => island.id === islandId)?.name ?? islandId;
+  }
+
+  private notifyLogistics(message: string): void {
+    if (this.statusLogisticsLabel) {
+      this.statusLogisticsLabel.textContent = message;
+    }
+    if (!this.intelLogList) return;
+    const item = document.createElement("li");
+    item.textContent = message;
+    this.intelLogList.prepend(item);
+    while (this.intelLogList.children.length > 6) {
+      const lastChild = this.intelLogList.lastChild;
+      if (!lastChild) break;
+      this.intelLogList.removeChild(lastChild);
+    }
+  }
+
+  private queueBuilding(type: BuildingType): void {
+    const islandId = this.activeIslandId ?? this.state.firstIslandId("player");
+    if (!islandId) {
+      this.notifyLogistics("No controlled island available for construction.");
+      this.soundscape.playAlert();
+      return;
+    }
+    const result = this.state.queueBuildingConstruction({ islandId, type, owner: "player" });
+    if (!result.ok) {
+      this.notifyLogistics(result.error);
+      this.soundscape.playAlert();
+      return;
+    }
+    const blueprint = BUILDING_DEFINITIONS[type];
+    this.notifyLogistics(`Construction started: ${blueprint.displayName} at ${this.getIslandName(islandId)}.`);
+    this.soundscape.playDelivery();
+    this.pulseTempo(2000);
+    this.updateStrategicHud();
+  }
+
+  private queueShip(type: UnitType): void {
+    const islandId = this.activeIslandId ?? this.state.firstIslandId("player");
+    if (!islandId) {
+      this.notifyLogistics("No shipyard selected for production.");
+      this.soundscape.playAlert();
+      return;
+    }
+    const result = this.state.queueShipProduction({ islandId, unitType: type, owner: "player" });
+    if (!result.ok) {
+      this.notifyLogistics(result.error);
+      this.soundscape.playAlert();
+      return;
+    }
+    const definition = UNIT_DEFINITIONS[type];
+    this.notifyLogistics(`${definition.displayName} keel laid at ${this.getIslandName(islandId)}.`);
+    this.soundscape.playDelivery();
+    this.pulseTempo(2400);
+    this.updateStrategicHud();
+  }
+
+  private refreshProductionButtons(overview: StrategicOverview): void {
+    if (!overview.islands.length) {
+      for (const button of this.buildingButtons.values()) {
+        button.disabled = true;
+      }
+      for (const button of this.shipButtons.values()) {
+        button.disabled = true;
+      }
+      return;
+    }
+
+    if (!this.activeIslandId || !overview.islands.some(island => island.id === this.activeIslandId)) {
+      this.activeIslandId = overview.islands[0]?.id;
+    }
+
+    const activeIsland = overview.islands.find(island => island.id === this.activeIslandId);
+    const shipyardTier = activeIsland
+      ? activeIsland.structures
+          .filter(structure => structure.type === "shipyard")
+          .reduce((tier, structure) => Math.max(tier, structure.tier), 0)
+      : 0;
+
+    for (const [type, button] of this.buildingButtons.entries()) {
+      const blueprint = BUILDING_DEFINITIONS[type];
+      const existingTier = activeIsland?.structures.find(structure => structure.type === type)?.tier ?? 0;
+      const nextTier = existingTier === 0 ? 1 : Math.min(existingTier + 1, blueprint.maxTier);
+      const pending = overview.buildingQueue.some(
+        project => project.islandId === activeIsland?.id && project.building === type
+      );
+      const costMultiplier = existingTier === 0 ? 1 : nextTier;
+      const cost = blueprint.buildCost * costMultiplier;
+      const atMaxTier = existingTier >= blueprint.maxTier;
+      button.disabled =
+        !activeIsland ||
+        atMaxTier ||
+        pending ||
+        overview.credits < cost;
+      button.classList.toggle("locked", button.disabled);
+    }
+
+    for (const [type, button] of this.shipButtons.entries()) {
+      const definition = UNIT_DEFINITIONS[type];
+      const pending = overview.shipQueue.some(
+        project => project.islandId === activeIsland?.id && project.unitType === type
+      );
+      const supplyAfter = overview.supplyUsed + overview.supplyQueued + definition.supplyCost;
+      const hasShipyard = shipyardTier >= definition.productionTier;
+      button.disabled =
+        !activeIsland ||
+        !hasShipyard ||
+        pending ||
+        overview.credits < definition.buildCost ||
+        supplyAfter > overview.supplyCapacity;
+      button.classList.toggle("locked", button.disabled);
+    }
   }
 
   private spawnInitialUnits(): void {
@@ -212,20 +401,22 @@ export class Game {
     const deltaSeconds = deltaTime / 60;
     const activeUnits = this.countActiveUnits();
     const now = this.now();
-    const baseTarget = activeUnits > 0 ? 1.18 : 1;
-    const boostTarget = now < this.tempoBoostUntil ? 1.32 : 1;
-    this.targetTimeScale = Math.max(baseTarget, boostTarget);
+    const baseTarget = activeUnits > 0 ? 1.06 : 0.9;
+    const tempoTarget = now < this.tempoBoostUntil ? 1.18 : baseTarget;
+    this.targetTimeScale = tempoTarget;
     const easing = 1 - Math.exp(-deltaSeconds * 4.5);
     this.timeScale += (this.targetTimeScale - this.timeScale) * easing;
+    const realSeconds = deltaSeconds * this.timeScale;
     const scaledDeltaTime = deltaTime * this.timeScale;
     const dt = scaledDeltaTime / (this.state.tickRate / 60);
     this.state.tick += this.timeScale;
     this.stepSimulation(dt);
     this.state.updateStrategicSystems(dt);
+    this.state.advanceProduction(realSeconds);
     this.handleEvents(this.state.consumeEvents());
     this.updateStrategicHud();
-    this.camera?.update(deltaSeconds * this.timeScale);
-    this.graphics.update(deltaSeconds * this.timeScale, this.targetTimeScale);
+    this.camera?.update(realSeconds);
+    this.graphics.update(realSeconds, this.targetTimeScale);
     this.render();
   };
 
@@ -737,26 +928,105 @@ export class Game {
 
   private updateStrategicHud(): void {
     const overview = this.state.getStrategicOverview("player");
+    if (!this.activeIslandId && overview.islands.length) {
+      this.activeIslandId = overview.islands[0]?.id;
+    }
+
+    if (this.resourceCreditsLabel) {
+      const credits = Math.round(overview.credits);
+      this.resourceCreditsLabel.textContent = `${credits.toLocaleString()} C`;
+    }
+
+    if (this.resourceSupplyLabel) {
+      const used = Math.round(overview.supplyUsed);
+      const capacity = Math.round(overview.supplyCapacity);
+      const queued = Math.round(overview.supplyQueued);
+      this.resourceSupplyLabel.textContent =
+        queued > 0 ? `${used}/${capacity} (+${queued})` : `${used}/${capacity}`;
+    }
+
+    const islandNameLookup = new Map(overview.islands.map(island => [island.id, island.name] as const));
+
     if (this.islandStatusList) {
-      this.islandStatusList.innerHTML = overview.islands
-        .map(island => {
-          const pressure = island.pressure.toFixed(1).padStart(4, " ");
-          const target = island.targetPressure.toFixed(0).padStart(3, " ");
-          const supply = island.supply.toFixed(1);
-          const storage = island.storage.toFixed(1);
-          return `<li><span class="label">${island.name}</span><span class="value">${pressure}% → ${target}%</span><span class="value">${supply}/${storage}t</span></li>`;
-        })
-        .join("");
+      this.islandStatusList.innerHTML = overview.islands.length
+        ? overview.islands
+            .map(island => {
+              const isActive = island.id === this.activeIslandId;
+              const pressure = island.pressure.toFixed(0);
+              const target = island.targetPressure.toFixed(0);
+              const supply = island.supply.toFixed(1);
+              const capacity = island.capacity.toFixed(1);
+              const structures = island.structures
+                .map(entry => `${BUILDING_DEFINITIONS[entry.type].displayName.split(" ")[0]} T${entry.tier}`)
+                .join(" · ");
+              const classes = [
+                "intel-item",
+                isActive ? "active" : "",
+                island.pressure < 30 ? "warning" : ""
+              ]
+                .filter(Boolean)
+                .join(" ");
+              return `<li class="${classes}" data-island="${island.id}">
+                <div class="item-header"><span class="name">${island.name}</span><span class="metric">${pressure}% → ${target}%</span></div>
+                <div class="item-body"><span class="metric">${supply}/${capacity}t</span><span class="structures">${structures || "—"}</span></div>
+              </li>`;
+            })
+            .join("")
+        : '<li class="empty">No islands secured</li>';
     }
+
     if (this.convoyStatusList) {
-      this.convoyStatusList.innerHTML = overview.convoys
-        .map(convoy => {
-          const penalty = Math.round(convoy.weatherPenalty * 100);
-          const status = convoy.disrupted ? "RAIDED" : "Clear";
-          return `<li class="${convoy.disrupted ? "warning" : "ok"}"><span class="label">${convoy.id}</span><span class="value">${status}</span><span class="value">Wx ${penalty}%</span></li>`;
-        })
-        .join("");
+      this.convoyStatusList.innerHTML = overview.convoys.length
+        ? overview.convoys
+            .map(convoy => {
+              const penalty = Math.round(convoy.weatherPenalty * 100);
+              const status = convoy.disrupted ? "Raided" : "Operational";
+              const classes = ["intel-item", convoy.disrupted ? "warning" : "ok"].join(" ");
+              return `<li class="${classes}">
+                <div class="item-header"><span class="name">${convoy.id}</span><span class="metric">${status}</span></div>
+                <div class="item-body"><span class="metric">Wx ${penalty}%</span><span class="metric">Res ${Math.round(
+                convoy.resilience * 100
+              )}%</span></div>
+              </li>`;
+            })
+            .join("")
+        : '<li class="empty">No convoys active</li>';
     }
+
+    if (this.buildQueueList) {
+      this.buildQueueList.innerHTML = overview.buildingQueue.length
+        ? overview.buildingQueue
+            .map(project => {
+              const progress = Math.round(project.progress * 100);
+              const eta = project.eta.toFixed(1);
+              const islandName = islandNameLookup.get(project.islandId) ?? project.islandId;
+              return `<li>
+                <div class="item-header"><span class="name">${project.displayName} T${project.targetTier}</span><span class="metric">${progress}%</span></div>
+                <div class="item-body"><span class="metric">${islandName}</span><span class="metric">${eta}s</span></div>
+              </li>`;
+            })
+            .join("")
+        : '<li class="empty">No structures queued</li>';
+    }
+
+    if (this.shipQueueList) {
+      this.shipQueueList.innerHTML = overview.shipQueue.length
+        ? overview.shipQueue
+            .map(project => {
+              const progress = Math.round(project.progress * 100);
+              const eta = project.eta.toFixed(1);
+              const islandName = islandNameLookup.get(project.islandId) ?? project.islandId;
+              return `<li>
+                <div class="item-header"><span class="name">${project.displayName}</span><span class="metric">${progress}%</span></div>
+                <div class="item-body"><span class="metric">${islandName}</span><span class="metric">${eta}s</span></div>
+              </li>`;
+            })
+            .join("")
+        : '<li class="empty">No vessels in production</li>';
+    }
+
+    this.refreshProductionButtons(overview);
+    this.updateSelectionStatus();
   }
 
   private handleEvents(events: GameEvent[]): void {
@@ -764,28 +1034,40 @@ export class Game {
     for (const event of events) {
       switch (event.type) {
         case "convoyDisrupted":
-          this.statusLogisticsLabel &&
-            (this.statusLogisticsLabel.textContent = `Alert: Convoy ${event.convoyId} under attack!`);
+          this.notifyLogistics(`Alert: Convoy ${event.convoyId} under attack!`);
           this.soundscape.playAlert();
           this.pulseTempo(2600);
           break;
         case "convoyRestored":
-          this.statusLogisticsLabel &&
-            (this.statusLogisticsLabel.textContent = `Convoy ${event.convoyId} back online.`);
+          this.notifyLogistics(`Convoy ${event.convoyId} back online.`);
           this.soundscape.playRecovery();
           this.pulseTempo(1800);
           break;
         case "convoyDelivered":
-          this.statusLogisticsLabel &&
-            (this.statusLogisticsLabel.textContent = `Supplies delivered via ${event.convoyId}.`);
+          this.notifyLogistics(`Supplies delivered via ${event.convoyId}.`);
           this.soundscape.playDelivery();
           this.pulseTempo(1800);
           break;
         case "islandCritical":
-          this.statusLogisticsLabel &&
-            (this.statusLogisticsLabel.textContent = `Critical pressure at ${event.islandId}!`);
+          this.notifyLogistics(`Critical pressure at ${event.islandId}!`);
           this.soundscape.playAlert();
           this.pulseTempo(3000);
+          break;
+        case "buildingCompleted":
+          if (event.owner === "player") {
+            const blueprint = BUILDING_DEFINITIONS[event.building];
+            this.notifyLogistics(`${blueprint.displayName} operational at ${this.getIslandName(event.islandId)}.`);
+            this.soundscape.playRecovery();
+            this.pulseTempo(2000);
+          }
+          break;
+        case "unitConstructed":
+          if (event.owner === "player") {
+            const definition = UNIT_DEFINITIONS[event.unitType];
+            this.notifyLogistics(`${definition.displayName} ready at ${this.getIslandName(event.islandId)}.`);
+            this.soundscape.playDelivery();
+            this.pulseTempo(2200);
+          }
           break;
         default:
           break;

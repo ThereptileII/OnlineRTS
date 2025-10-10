@@ -1,4 +1,5 @@
 import type {
+  BuildingType,
   ConvoyTemplate,
   IslandDefinition,
   Order,
@@ -28,6 +29,7 @@ interface IslandState extends IslandDefinition {
   targetPressure: number;
   powerReserve: number;
   lastPressureDelta: number;
+  supplyCapacity: number;
 }
 
 interface ConvoyState extends ConvoyTemplate {
@@ -42,11 +44,32 @@ interface StormState extends StormTemplate {
   remaining: number;
 }
 
+interface BuildingProject {
+  id: string;
+  islandId: string;
+  type: BuildingType;
+  targetTier: 1 | 2 | 3;
+  remaining: number;
+  total: number;
+  owner: UnitOwner;
+}
+
+interface ShipProductionProject {
+  id: string;
+  islandId: string;
+  unitType: UnitType;
+  remaining: number;
+  total: number;
+  owner: UnitOwner;
+}
+
 export type GameEvent =
   | { type: "convoyDisrupted"; convoyId: string; owner: UnitOwner }
   | { type: "convoyRestored"; convoyId: string; owner: UnitOwner }
   | { type: "convoyDelivered"; convoyId: string; owner: UnitOwner }
-  | { type: "islandCritical"; islandId: string; owner: IslandState["owner"]; pressure: number };
+  | { type: "islandCritical"; islandId: string; owner: IslandState["owner"]; pressure: number }
+  | { type: "buildingCompleted"; owner: UnitOwner; islandId: string; building: BuildingType; tier: 1 | 2 | 3 }
+  | { type: "unitConstructed"; owner: UnitOwner; islandId: string; unitType: UnitType; unitId: number };
 
 export interface UnitEntity {
   id: number;
@@ -77,6 +100,9 @@ export class GameState {
   public readonly storms: Map<string, StormState> = new Map();
   private readonly events: GameEvent[] = [];
   private readonly criticalIslands = new Set<string>();
+  private readonly credits: Record<UnitOwner, number> = { player: 900, computer: 900 };
+  private buildingProjects: BuildingProject[] = [];
+  private shipyardQueues: ShipProductionProject[] = [];
 
   constructor(config: SimulationConfig) {
     this.map = config.map;
@@ -93,7 +119,8 @@ export class GameState {
         targetPressure: island.initialPressure,
         supply: island.storage * 0.6,
         powerReserve: island.baseCapacity * 0.4,
-        lastPressureDelta: 0
+        lastPressureDelta: 0,
+        supplyCapacity: island.baseCapacity
       });
     }
     for (const convoy of preset.convoys) {
@@ -130,6 +157,211 @@ export class GameState {
     };
     this.units.set(entity.id, entity);
     return entity;
+  }
+
+  firstIslandId(owner: UnitOwner): string | undefined {
+    for (const island of this.islands.values()) {
+      if (island.owner === owner) {
+        return island.id;
+      }
+    }
+    return undefined;
+  }
+
+  queueBuildingConstruction(options: {
+    islandId: string;
+    type: BuildingType;
+    owner: UnitOwner;
+  }): { ok: true; project: BuildingProject } | { ok: false; error: string } {
+    const island = this.islands.get(options.islandId);
+    if (!island) {
+      return { ok: false, error: "Island not available" };
+    }
+    if (island.owner !== options.owner) {
+      return { ok: false, error: "Island is not under your control" };
+    }
+    const blueprint = BUILDING_DEFINITIONS[options.type];
+    if (!blueprint) {
+      return { ok: false, error: "Unknown structure" };
+    }
+    if (blueprint.buildTime <= 0 || blueprint.buildCost < 0) {
+      return { ok: false, error: "Structure cannot be constructed" };
+    }
+    const existing = island.buildings.find(entry => entry.type === options.type);
+    const currentTier = existing?.tier ?? 0;
+    if (currentTier >= blueprint.maxTier) {
+      return { ok: false, error: "Structure already at max tier" };
+    }
+    if (this.buildingProjects.some(project => project.islandId === options.islandId && project.type === options.type)) {
+      return { ok: false, error: "Construction already in progress" };
+    }
+    const targetTier = (currentTier === 0
+      ? 1
+      : Math.min(currentTier + 1, blueprint.maxTier)) as 1 | 2 | 3;
+    const tierMultiplier = existing ? targetTier : 1;
+    const totalCost = blueprint.buildCost * tierMultiplier;
+    if (this.credits[options.owner] < totalCost) {
+      return { ok: false, error: "Insufficient credits" };
+    }
+    const totalTime = Math.max(6, blueprint.buildTime * tierMultiplier);
+    this.credits[options.owner] -= totalCost;
+    const project: BuildingProject = {
+      id: generateId(8),
+      islandId: options.islandId,
+      type: options.type,
+      targetTier,
+      remaining: totalTime,
+      total: totalTime,
+      owner: options.owner
+    };
+    this.buildingProjects = [...this.buildingProjects, project];
+    return { ok: true, project };
+  }
+
+  queueShipProduction(options: {
+    islandId: string;
+    unitType: UnitType;
+    owner: UnitOwner;
+  }): { ok: true; project: ShipProductionProject } | { ok: false; error: string } {
+    const island = this.islands.get(options.islandId);
+    if (!island) {
+      return { ok: false, error: "Island not available" };
+    }
+    if (island.owner !== options.owner) {
+      return { ok: false, error: "Island is not under your control" };
+    }
+    const definition = UNIT_DEFINITIONS[options.unitType];
+    if (!definition) {
+      return { ok: false, error: "Unknown hull" };
+    }
+    const shipyardTier = this.getShipyardTier(island);
+    if (shipyardTier === 0) {
+      return { ok: false, error: "Requires an operational shipyard" };
+    }
+    if (definition.productionTier > shipyardTier) {
+      return {
+        ok: false,
+        error: `Requires Shipyard Tier ${definition.productionTier}`
+      };
+    }
+    const totalCost = definition.buildCost;
+    if (this.credits[options.owner] < totalCost) {
+      return { ok: false, error: "Insufficient credits" };
+    }
+    const supplyCapacity = this.computeSupplyCapacity(options.owner);
+    const currentUsage = this.computeSupplyUsage(options.owner, true);
+    if (currentUsage + definition.supplyCost > supplyCapacity) {
+      return { ok: false, error: "Insufficient supply capacity" };
+    }
+    const project: ShipProductionProject = {
+      id: generateId(8),
+      islandId: options.islandId,
+      unitType: options.unitType,
+      remaining: Math.max(4, definition.buildTime),
+      total: Math.max(4, definition.buildTime),
+      owner: options.owner
+    };
+    this.credits[options.owner] -= totalCost;
+    this.shipyardQueues = [...this.shipyardQueues, project];
+    return { ok: true, project };
+  }
+
+  advanceProduction(elapsedSeconds: number): void {
+    if (elapsedSeconds <= 0) {
+      return;
+    }
+    for (let index = this.buildingProjects.length - 1; index >= 0; index -= 1) {
+      const project = this.buildingProjects[index]!;
+      project.remaining = Math.max(0, project.remaining - elapsedSeconds);
+      if (project.remaining <= 0) {
+        this.finalizeBuildingProject(project);
+        this.buildingProjects.splice(index, 1);
+      }
+    }
+    for (let index = this.shipyardQueues.length - 1; index >= 0; index -= 1) {
+      const project = this.shipyardQueues[index]!;
+      project.remaining = Math.max(0, project.remaining - elapsedSeconds);
+      if (project.remaining <= 0) {
+        this.finalizeShipProject(project);
+        this.shipyardQueues.splice(index, 1);
+      }
+    }
+  }
+
+  private computeSupplyCapacity(owner: UnitOwner): number {
+    let total = 0;
+    for (const island of this.islands.values()) {
+      if (island.owner !== owner) continue;
+      total += island.supplyCapacity ?? island.baseCapacity;
+    }
+    return total;
+  }
+
+  private computeSupplyUsage(owner: UnitOwner, includeQueued = false): number {
+    let usage = 0;
+    for (const unit of this.units.values()) {
+      if (unit.owner !== owner) continue;
+      usage += unit.definition.supplyCost;
+    }
+    if (includeQueued) {
+      for (const project of this.shipyardQueues) {
+        if (project.owner !== owner) continue;
+        usage += UNIT_DEFINITIONS[project.unitType].supplyCost;
+      }
+    }
+    return usage;
+  }
+
+  private getShipyardTier(island: IslandState): number {
+    let tier = 0;
+    for (const building of island.buildings) {
+      if (building.type !== "shipyard") continue;
+      tier = Math.max(tier, building.tier);
+    }
+    return tier;
+  }
+
+  private finalizeBuildingProject(project: BuildingProject): void {
+    const island = this.islands.get(project.islandId);
+    if (!island) {
+      return;
+    }
+    const existing = island.buildings.find(entry => entry.type === project.type);
+    if (existing) {
+      existing.tier = project.targetTier;
+    } else {
+      island.buildings = [...island.buildings, { type: project.type, tier: project.targetTier }];
+    }
+    if (island.owner === project.owner) {
+      this.events.push({
+        type: "buildingCompleted",
+        owner: project.owner,
+        islandId: island.id,
+        building: project.type,
+        tier: project.targetTier
+      });
+    }
+  }
+
+  private finalizeShipProject(project: ShipProductionProject): void {
+    const island = this.islands.get(project.islandId);
+    if (!island) {
+      return;
+    }
+    const offsetAngle = Math.random() * Math.PI * 2;
+    const offsetDistance = 0.6 + Math.random() * 0.8;
+    const spawn: Vector2 = {
+      x: island.position.x + Math.cos(offsetAngle) * offsetDistance,
+      y: island.position.y + Math.sin(offsetAngle) * offsetDistance
+    };
+    const unit = this.createUnit(project.unitType, spawn, project.owner);
+    this.events.push({
+      type: "unitConstructed",
+      owner: project.owner,
+      islandId: island.id,
+      unitType: project.unitType,
+      unitId: unit.id
+    });
   }
 
   enqueueOrder(unitIds: number[], order: Order, options: { append?: boolean } = {}): void {
@@ -252,7 +484,9 @@ export class GameState {
       targetPressure: number;
       supply: number;
       storage: number;
+      capacity: number;
       lastPressureDelta: number;
+      structures: Array<{ type: BuildingType; tier: 1 | 2 | 3 }>;
     }>;
     convoys: Array<{
       id: string;
@@ -261,6 +495,27 @@ export class GameState {
       throughput: number;
       resilience: number;
     }>;
+    buildingQueue: Array<{
+      id: string;
+      islandId: string;
+      displayName: string;
+      building: BuildingType;
+      targetTier: 1 | 2 | 3;
+      progress: number;
+      eta: number;
+    }>;
+    shipQueue: Array<{
+      id: string;
+      islandId: string;
+      displayName: string;
+      unitType: UnitType;
+      progress: number;
+      eta: number;
+    }>;
+    credits: number;
+    supplyCapacity: number;
+    supplyUsed: number;
+    supplyQueued: number;
   } {
     const islands = [...this.islands.values()]
       .filter(island => island.owner === owner)
@@ -271,7 +526,9 @@ export class GameState {
         targetPressure: island.targetPressure,
         supply: island.supply,
         storage: island.storage,
-        lastPressureDelta: island.lastPressureDelta
+        capacity: island.supplyCapacity,
+        lastPressureDelta: island.lastPressureDelta,
+        structures: island.buildings.map(entry => ({ type: entry.type, tier: entry.tier }))
       }))
       .sort((a, b) => a.pressure - b.pressure);
 
@@ -285,7 +542,52 @@ export class GameState {
         resilience: convoy.resilience
       }));
 
-    return { islands, convoys };
+    const buildingQueue = this.buildingProjects
+      .filter(project => project.owner === owner)
+      .map(project => {
+        const blueprint = BUILDING_DEFINITIONS[project.type];
+        const total = project.total <= 0 ? 1 : project.total;
+        return {
+          id: project.id,
+          islandId: project.islandId,
+          displayName: blueprint.displayName,
+          building: project.type,
+          targetTier: project.targetTier,
+          progress: clamp(1 - project.remaining / total, 0, 1),
+          eta: project.remaining
+        };
+      });
+
+    const shipQueue = this.shipyardQueues
+      .filter(project => project.owner === owner)
+      .map(project => {
+        const definition = UNIT_DEFINITIONS[project.unitType];
+        const total = project.total <= 0 ? 1 : project.total;
+        return {
+          id: project.id,
+          islandId: project.islandId,
+          displayName: definition.displayName,
+          unitType: project.unitType,
+          progress: clamp(1 - project.remaining / total, 0, 1),
+          eta: project.remaining
+        };
+      });
+
+    const supplyCapacity = this.computeSupplyCapacity(owner);
+    const supplyUsed = this.computeSupplyUsage(owner, false);
+    const totalUsage = this.computeSupplyUsage(owner, true);
+    const supplyQueued = Math.max(0, totalUsage - supplyUsed);
+
+    return {
+      islands,
+      convoys,
+      buildingQueue,
+      shipQueue,
+      credits: this.credits[owner],
+      supplyCapacity,
+      supplyUsed,
+      supplyQueued
+    };
   }
 
   getRenderableLogistics(): {
@@ -395,12 +697,14 @@ export class GameState {
           accumulator.capacity += definition.supplyCapacity * tierMultiplier;
           accumulator.pressure += definition.pressureBonus * tierMultiplier;
           accumulator.power += definition.powerOutput * tierMultiplier;
+          accumulator.income += definition.creditYield * tierMultiplier;
           return accumulator;
         },
-        { demand: 0, capacity: 0, pressure: 0, power: 0 }
+        { demand: 0, capacity: 0, pressure: 0, power: 0, income: 0 }
       );
 
       const supplyCapacity = island.baseCapacity + buildingEffects.capacity;
+      island.supplyCapacity = supplyCapacity;
       island.supply = clamp(island.supply, 0, supplyCapacity);
 
       const demand = island.baseDemand + buildingEffects.demand;
@@ -436,6 +740,13 @@ export class GameState {
       } else if (island.pressure > 24 && this.criticalIslands.has(island.id)) {
         this.criticalIslands.delete(island.id);
       }
+
+      if (island.owner === "player" || island.owner === "computer") {
+        const passiveCredits = buildingEffects.income * dt;
+        const convoyCredits = convoyBonus * 0.6 * dt;
+        this.credits[island.owner] += passiveCredits + convoyCredits;
+        this.credits[island.owner] = Math.max(0, this.credits[island.owner]);
+      }
     }
   }
 
@@ -446,6 +757,9 @@ export class GameState {
     destination.supply = clamp(destination.supply + convoy.throughput * 2.4, 0, destination.storage);
     destination.pressure = clamp(destination.pressure + convoy.throughput * 2.2, 0, 100);
     origin.supply = clamp(origin.supply - convoy.throughput * 1.2, 0, origin.storage);
+    if (convoy.owner === "player" || convoy.owner === "computer") {
+      this.credits[convoy.owner] += convoy.throughput * 6;
+    }
     this.events.push({ type: "convoyDelivered", convoyId: convoy.id, owner: convoy.owner });
   }
 

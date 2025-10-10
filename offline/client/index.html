@@ -9,127 +9,318 @@
       body {
         margin: 0;
         padding: 0;
-        background: #02121f;
-        color: #f4f7fb;
-        font-family: "Inter", system-ui, sans-serif;
         height: 100%;
         overflow: hidden;
+        font-family: "Inter", system-ui, sans-serif;
+        background: radial-gradient(circle at 15% 20%, rgba(20, 82, 128, 0.55), transparent 60%),
+          radial-gradient(circle at 85% 15%, rgba(68, 142, 206, 0.4), transparent 55%),
+          #010c15;
+        color: #e6f6ff;
+      }
+
+      button {
+        font: inherit;
+        border: none;
+        background: none;
+        color: inherit;
+        cursor: pointer;
       }
 
       #ui-root {
         position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
+        inset: 0;
         pointer-events: none;
+        display: grid;
+        grid-template-areas:
+          "top top top"
+          "left . right"
+          "commands commands commands";
+        grid-template-columns: minmax(260px, 320px) 1fr minmax(260px, 320px);
+        grid-template-rows: auto 1fr auto;
+        gap: 1.2rem;
+        padding: 1.2rem;
+        box-sizing: border-box;
       }
 
-      .hud {
-        display: flex;
-        gap: 0.75rem;
-        padding: 0.75rem 1rem;
-        align-items: center;
+      .top-hud {
+        grid-area: top;
         pointer-events: auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.9rem 1.4rem;
+        border-radius: 18px;
+        background: linear-gradient(135deg, rgba(8, 30, 48, 0.92), rgba(6, 20, 32, 0.88));
+        border: 1px solid rgba(92, 176, 240, 0.35);
+        box-shadow: 0 18px 40px rgba(0, 12, 28, 0.4);
+        backdrop-filter: blur(10px);
       }
 
-      .hud button,
-      .menu-panel button {
-        background: rgba(22, 84, 133, 0.85);
-        color: #f3fbff;
-        border: 1px solid rgba(139, 197, 237, 0.3);
-        border-radius: 6px;
-        padding: 0.4rem 0.9rem;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        cursor: pointer;
+      .brand {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
       }
 
-      .hud button.active {
-        background: rgba(64, 192, 255, 0.8);
-        color: #002133;
+      .brand .title {
+        font-size: 1.4rem;
         font-weight: 600;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
       }
 
-      .hud button:disabled,
-      .menu-panel button:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
+      .resources {
+        display: flex;
+        gap: 1rem;
       }
 
-      .status-panel {
-        margin-left: auto;
-        font-size: 0.85rem;
+      .resource {
+        background: rgba(14, 44, 72, 0.78);
+        border: 1px solid rgba(126, 210, 255, 0.32);
+        border-radius: 12px;
+        padding: 0.55rem 0.9rem;
         display: flex;
         flex-direction: column;
         gap: 0.1rem;
+        min-width: 110px;
       }
 
-      .strategic-panel {
-        position: absolute;
-        bottom: 1rem;
-        left: 1rem;
-        display: grid;
-        grid-template-columns: repeat(2, minmax(160px, 220px));
-        gap: 1rem;
-        background: rgba(5, 32, 52, 0.76);
-        border: 1px solid rgba(108, 204, 255, 0.2);
-        border-radius: 10px;
-        padding: 1rem;
-        pointer-events: auto;
-        font-size: 0.8rem;
-        backdrop-filter: blur(2px);
+      .resource .label {
+        font-size: 0.65rem;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: rgba(172, 216, 255, 0.7);
       }
 
-      .strategic-panel section {
+      .resource .value {
+        font-size: 0.95rem;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+      }
+
+      .status-strip {
+        display: flex;
+        gap: 1.2rem;
+        font-size: 0.85rem;
+        color: rgba(193, 235, 255, 0.82);
+        letter-spacing: 0.04em;
+      }
+
+      .sidebar {
         display: flex;
         flex-direction: column;
-        gap: 0.4rem;
+        gap: 1rem;
+        pointer-events: auto;
       }
 
-      .strategic-panel h2 {
+      .sidebar.left {
+        grid-area: left;
+      }
+
+      .sidebar.right {
+        grid-area: right;
+      }
+
+      .panel {
+        background: linear-gradient(160deg, rgba(7, 26, 42, 0.92), rgba(7, 18, 28, 0.88));
+        border: 1px solid rgba(92, 188, 255, 0.22);
+        border-radius: 16px;
+        padding: 1rem 1.2rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.65rem;
+        box-shadow: 0 16px 34px rgba(0, 10, 24, 0.45);
+        backdrop-filter: blur(10px);
+      }
+
+      .panel h2 {
         margin: 0;
+        font-size: 0.78rem;
+        letter-spacing: 0.18em;
         text-transform: uppercase;
-        letter-spacing: 0.08em;
-        font-size: 0.75rem;
-        color: rgba(200, 242, 255, 0.85);
+        color: rgba(178, 226, 255, 0.78);
       }
 
-      .strategic-panel ul {
+      .intel-list,
+      .queue-list,
+      .log-list {
         list-style: none;
         margin: 0;
         padding: 0;
         display: flex;
         flex-direction: column;
-        gap: 0.25rem;
+        gap: 0.55rem;
+        max-height: 26vh;
+        overflow: hidden;
       }
 
-      .strategic-panel li {
+      .log-list {
+        max-height: 18vh;
+        overflow: auto;
+      }
+
+      .intel-item,
+      .queue-list li,
+      .log-list li {
+        background: rgba(10, 48, 76, 0.58);
+        border: 1px solid rgba(120, 198, 255, 0.2);
+        border-radius: 12px;
+        padding: 0.6rem 0.8rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        font-size: 0.76rem;
+        transition: border 0.2s ease, background 0.2s ease;
+        pointer-events: auto;
+      }
+
+      .intel-item:hover {
+        border-color: rgba(140, 218, 255, 0.45);
+      }
+
+      .intel-item.active {
+        border-color: rgba(140, 220, 255, 0.9);
+        background: rgba(12, 78, 122, 0.72);
+        box-shadow: 0 0 20px rgba(70, 160, 255, 0.4);
+      }
+
+      .intel-item.warning {
+        background: rgba(150, 54, 46, 0.68);
+        border-color: rgba(255, 134, 118, 0.5);
+      }
+
+      .intel-item.ok {
+        background: rgba(28, 96, 72, 0.68);
+        border-color: rgba(110, 212, 184, 0.5);
+      }
+
+      .item-header,
+      .item-body {
         display: flex;
         justify-content: space-between;
-        gap: 0.4rem;
-        background: rgba(10, 64, 92, 0.35);
-        padding: 0.35rem 0.5rem;
-        border-radius: 6px;
+        gap: 0.6rem;
       }
 
-      .strategic-panel li .label {
+      .item-header .name {
         font-weight: 600;
-        color: rgba(229, 247, 255, 0.9);
+        letter-spacing: 0.08em;
       }
 
-      .strategic-panel li .value {
+      .item-body .metric {
         font-variant-numeric: tabular-nums;
-        color: rgba(197, 230, 255, 0.85);
+        color: rgba(192, 234, 255, 0.82);
       }
 
-      .strategic-panel li.warning {
-        background: rgba(164, 55, 48, 0.45);
-        color: #ffe3d8;
+      .item-body .structures {
+        color: rgba(170, 220, 255, 0.7);
+        font-size: 0.7rem;
+        letter-spacing: 0.04em;
       }
 
-      .strategic-panel li.ok {
-        background: rgba(48, 136, 116, 0.45);
-        color: #dff8f0;
+      .empty {
+        opacity: 0.58;
+        font-size: 0.72rem;
+        padding: 0.5rem 0.75rem;
+        border-radius: 10px;
+        background: rgba(10, 48, 76, 0.4);
+      }
+
+      .command-bar {
+        grid-area: commands;
+        pointer-events: auto;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 1.1rem;
+        background: linear-gradient(160deg, rgba(6, 20, 34, 0.95), rgba(5, 16, 28, 0.92));
+        border: 1px solid rgba(90, 184, 240, 0.28);
+        border-radius: 18px;
+        padding: 1.1rem 1.4rem 1.4rem;
+        box-shadow: 0 22px 44px rgba(0, 8, 24, 0.5);
+        backdrop-filter: blur(12px);
+        align-items: start;
+      }
+
+      .command-section {
+        display: flex;
+        flex-direction: column;
+        gap: 0.6rem;
+      }
+
+      .command-section h3 {
+        margin: 0;
+        font-size: 0.82rem;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: rgba(176, 226, 255, 0.82);
+      }
+
+      .command-grid {
+        display: grid;
+        gap: 0.55rem;
+      }
+
+      .command-grid--orders {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .command-grid--structures {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .command-grid--ships {
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+      }
+
+      .command-grid button {
+        pointer-events: auto;
+        border-radius: 12px;
+        padding: 0.55rem 0.65rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+        align-items: flex-start;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 0.68rem;
+        background: linear-gradient(180deg, rgba(18, 58, 94, 0.82), rgba(10, 34, 56, 0.92));
+        border: 1px solid rgba(100, 184, 242, 0.28);
+        transition: transform 0.18s ease, border 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .command-grid button:hover:not(.locked) {
+        transform: translateY(-2px);
+        border-color: rgba(146, 226, 255, 0.6);
+        box-shadow: 0 10px 18px rgba(32, 120, 188, 0.28);
+      }
+
+      .command-grid button.active {
+        background: linear-gradient(180deg, rgba(64, 176, 255, 0.9), rgba(12, 52, 90, 0.88));
+        border-color: rgba(136, 226, 255, 0.9);
+        color: #041622;
+      }
+
+      .command-grid button.locked {
+        opacity: 0.35;
+        cursor: default;
+      }
+
+      .action-title {
+        font-size: 0.74rem;
+        font-weight: 600;
+      }
+
+      .action-meta {
+        font-size: 0.62rem;
+        color: rgba(180, 224, 255, 0.7);
+      }
+
+      .logistics-status {
+        grid-column: 1 / -1;
+        margin-top: 0.4rem;
+        font-size: 0.85rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: rgba(184, 232, 255, 0.85);
       }
 
       #mode-menu {
@@ -138,8 +329,8 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        background: rgba(2, 18, 31, 0.92);
-        backdrop-filter: blur(2px);
+        background: rgba(1, 10, 20, 0.86);
+        backdrop-filter: blur(12px);
         pointer-events: auto;
         z-index: 2;
       }
@@ -151,40 +342,51 @@
       .menu-panel {
         display: flex;
         flex-direction: column;
-        gap: 1rem;
-        background: rgba(5, 32, 52, 0.9);
-        border: 1px solid rgba(102, 190, 255, 0.25);
-        border-radius: 12px;
-        padding: 2.5rem 3rem;
-        min-width: 320px;
-        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.4);
+        gap: 1.2rem;
+        background: linear-gradient(180deg, rgba(6, 28, 48, 0.95), rgba(4, 18, 30, 0.92));
+        border: 1px solid rgba(118, 210, 255, 0.32);
+        border-radius: 20px;
+        padding: 3rem 3.4rem;
+        min-width: 340px;
+        box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
         text-align: center;
       }
 
       .menu-panel h1 {
         margin: 0;
-        font-size: 1.6rem;
-        letter-spacing: 0.06em;
+        font-size: 1.65rem;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
       }
 
       .menu-panel p {
         margin: 0;
-        color: rgba(233, 245, 255, 0.78);
+        color: rgba(202, 230, 255, 0.75);
         font-size: 0.95rem;
       }
 
       .menu-actions {
         display: flex;
-        gap: 1rem;
+        gap: 1.1rem;
         justify-content: center;
       }
 
       .menu-panel button {
-        padding: 0.6rem 1.2rem;
-        font-size: 0.85rem;
+        padding: 0.65rem 1.4rem;
+        font-size: 0.9rem;
+        border-radius: 12px;
+        background: linear-gradient(160deg, rgba(28, 112, 188, 0.9), rgba(16, 54, 92, 0.92));
+        border: 1px solid rgba(130, 210, 255, 0.45);
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        box-shadow: 0 12px 24px rgba(12, 64, 120, 0.35);
+      }
+
+      .menu-panel button:hover {
+        border-color: rgba(172, 234, 255, 0.9);
       }
     </style>
-    <script defer src="./assets/index-C13ChbBZ.iife.js"></script>
+    <script defer src="./assets/index-DGt21yYS.iife.js"></script>
   </head>
   <body>
     <div id="mode-menu">
@@ -198,26 +400,96 @@
       </div>
     </div>
     <div id="ui-root">
-      <div class="hud">
-        <button id="order-move" class="active">Move</button>
-        <button id="order-patrol">Patrol</button>
-        <button id="order-escort">Escort</button>
-        <div class="status-panel">
+      <header class="top-hud">
+        <div class="brand">
+          <span class="title">SeaLines Command</span>
+        </div>
+        <div class="resources">
+          <div class="resource">
+            <span class="label">Credits</span>
+            <span class="value" id="resource-credits">0 C</span>
+          </div>
+          <div class="resource">
+            <span class="label">Supply</span>
+            <span class="value" id="resource-supply">0/0</span>
+          </div>
+        </div>
+        <div class="status-strip">
           <span id="status-mode">Mode: Move</span>
           <span id="status-selection">No units selected</span>
           <span id="status-opponent">Opponent: —</span>
-          <span id="status-logistics">Logistics stable</span>
         </div>
-      </div>
-      <div class="strategic-panel">
-        <section>
+      </header>
+      <aside class="sidebar left">
+        <section class="panel">
           <h2>Islands</h2>
-          <ul id="island-status"></ul>
+          <ul id="island-status" class="intel-list"></ul>
         </section>
-        <section>
+        <section class="panel">
           <h2>Convoys</h2>
-          <ul id="convoy-status"></ul>
+          <ul id="convoy-status" class="intel-list"></ul>
         </section>
+      </aside>
+      <aside class="sidebar right">
+        <section class="panel">
+          <h2>Construction Queue</h2>
+          <ul id="construction-queue" class="queue-list"></ul>
+        </section>
+        <section class="panel">
+          <h2>Shipyard Queue</h2>
+          <ul id="shipyard-queue" class="queue-list"></ul>
+        </section>
+        <section class="panel">
+          <h2>Logistics Feed</h2>
+          <ul id="logistics-feed" class="log-list"></ul>
+        </section>
+      </aside>
+      <div class="command-bar">
+        <section class="command-section">
+          <h3>Orders</h3>
+          <div class="command-grid command-grid--orders">
+            <button id="order-move" class="active" data-hotkey="m">
+              <span class="action-title">Move</span>
+              <span class="action-meta">M</span>
+            </button>
+            <button id="order-patrol" data-hotkey="p">
+              <span class="action-title">Patrol</span>
+              <span class="action-meta">P</span>
+            </button>
+            <button id="order-escort" data-hotkey="e">
+              <span class="action-title">Escort</span>
+              <span class="action-meta">E</span>
+            </button>
+          </div>
+        </section>
+        <section class="command-section">
+          <h3>Structures</h3>
+          <div class="command-grid command-grid--structures">
+            <button data-building="warehouse" data-hotkey="w"></button>
+            <button data-building="powerWind" data-hotkey="q"></button>
+            <button data-building="powerWave" data-hotkey="r"></button>
+            <button data-building="shipyard" data-hotkey="y"></button>
+            <button data-building="tradePost" data-hotkey="t"></button>
+            <button data-building="coastalBattery" data-hotkey="c"></button>
+            <button data-building="radar" data-hotkey="d"></button>
+            <button data-building="airDock" data-hotkey="a"></button>
+          </div>
+        </section>
+        <section class="command-section">
+          <h3>Fleet Forge</h3>
+          <div class="command-grid command-grid--ships">
+            <button data-ship="sloop" data-hotkey="1"></button>
+            <button data-ship="corvette" data-hotkey="2"></button>
+            <button data-ship="transport" data-hotkey="3"></button>
+            <button data-ship="frigate" data-hotkey="4"></button>
+            <button data-ship="submarine" data-hotkey="5"></button>
+            <button data-ship="artilleryBarge" data-hotkey="6"></button>
+            <button data-ship="destroyer" data-hotkey="7"></button>
+            <button data-ship="cruiser" data-hotkey="8"></button>
+            <button data-ship="escortCarrier" data-hotkey="9"></button>
+          </div>
+        </section>
+        <div class="logistics-status" id="status-logistics">Logistics stable</div>
       </div>
     </div>
   </body>
